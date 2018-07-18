@@ -1,5 +1,5 @@
-from eiisclient.cli import main
+from eiisclient.cli import main as _main
 
 
 if __name__ == '__main__':
-    main()
+    _main()
