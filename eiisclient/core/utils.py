@@ -43,11 +43,14 @@ def file_hash_calc(fpath):  # pragma: no cover
     sha1 = hashlib.sha1()
     block = 128 * 256  # 4096 for NTFS
 
-    with open(fpath, 'rb') as fp:
-        for chunk in iter(lambda: fp.read(block), b''):
-            sha1.update(chunk)
-
-    return sha1.hexdigest()
+    try:
+        with open(fpath, 'rb') as fp:
+            for chunk in iter(lambda: fp.read(block), b''):
+                sha1.update(chunk)
+    except FileNotFoundError:
+        return None
+    else:
+        return sha1.hexdigest()
 
 
 def hash_calc(data):  # pragma: no cover

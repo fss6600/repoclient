@@ -147,9 +147,9 @@ class FileDispatcher(BaseDispatcher):
             dst = os.path.join(dst, fname)
 
         try:
-            shutil.copy(src, dst)
-            if self.count_queue:
-                self.count_queue.put(os.path.getsize(dst))
+            shutil.copy2(src, dst)
+            # if self.count_queue:
+            #     self.count_queue.put(os.path.getsize(dst))
         except IOError:
             raise  # todo добавить свое исключение или обработку, запись в лог
 
@@ -172,7 +172,12 @@ class FileDispatcher(BaseDispatcher):
                 yield fpath, rpath
 
     def move(self, src, dst):
-        return shutil.move(src, dst)
+        try:
+            shutil.move(src, dst)
+        except FileNotFoundError:
+            dirname = os.path.dirname(dst)
+            os.makedirs(dirname, exist_ok=True)
+            shutil.move(src, dst)
 
     def get_index_hash(self):
         index_hash_file_path = os.path.join(self.repopath, self.index_hash_file_name)

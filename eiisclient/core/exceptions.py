@@ -19,3 +19,7 @@ class DispatcherActivationError(Exception):
 class PacketInstallError(Exception):
     def __repr__(self):
         return 'Ошибка установки пакета'
+
+
+class DownloadPacketError(Exception):
+    pass

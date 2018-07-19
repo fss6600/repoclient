@@ -6,7 +6,7 @@ from collections import Counter, namedtuple
 from pprint import pprint
 import copy
 from eiisclient.core.manage import Action, Status, Manager
-from eiisclient.core.utils import get_temp_dir, gzip_read, from_json, to_json
+from eiisclient.core.utils import get_temp_dir, gzip_read, from_json, to_json, file_hash_calc
 from eiisclient.core.exceptions import *
 from tests.utils import create_test_repo
 from tests.eiisrepo.eiisrepo import Manager as Repomanager
@@ -22,9 +22,9 @@ class ManageTestCase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # print('press any key')
-        # input()
-        pass
+        cls.workdir.cleanup()
+        cls.repodir.cleanup()
+        cls.eiispath.cleanup()
 
     def test_action_class(self):
         update = Action.update
@@ -79,7 +79,7 @@ class ManageWorkTestCase(unittest.TestCase):
     def setUpClass(cls):
         cls.workdir = get_temp_dir(prefix='workdir_')
         cls.repodir = get_temp_dir(prefix='repodir_')
-        cls.eiispath = get_temp_dir(prefix='eiis_')
+        cls.eiispath = get_temp_dir(prefix='eiisdir_')
 
         cls.logger = logging.getLogger(__name__)
         cls.logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -97,9 +97,9 @@ class ManageWorkTestCase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        print('\n press any key')
-        input()
-        pass
+        cls.workdir.cleanup()
+        cls.repodir.cleanup()
+        cls.eiispath.cleanup()
 
     def setUp(self):
 
@@ -287,8 +287,8 @@ class ManageWorkTestCase(unittest.TestCase):
                 self.assertIsInstance(task.src, str)
                 self.assertIsInstance(task.dst, str)
                 self.assertIsInstance(task.crc, str)
-            else:
-                self.assertFalse(True, 'неопределенное действие')
+            # else:
+            #     self.assertFalse(True, 'неопределенное действие')
 
     def test_get_installed_packets_list(self):
         ##  no eiispath
@@ -317,17 +317,17 @@ class ManageWorkTestCase(unittest.TestCase):
         removed = ('ОКВЭД', 'Льготные путевки', 'Санкур')
 
         for name in installed:
-            os.makedirs(os.path.join(eiispath.name, name))
+            os.makedirs(os.path.join(eiispath, name))
 
         for name in removed:
-            os.makedirs('{}.removed'.format(os.path.join(eiispath.name, name)))
+            os.makedirs('{}.removed'.format(os.path.join(eiispath, name)))
 
 
         ##  3 eiis
         res = self.manager.get_installed_packets_list()
-        print(res)
-        print(os.listdir(eiispath.name))
-        print(os.listdir(self.manager.eiispath))
+        # print(res)
+        # print(os.listdir(eiispath))
+        # print(os.listdir(self.manager.eiispath))
         self.assertIsInstance(res, tuple)
         self.assertEqual(len(res), 3)
         # self.assertIn('Форма 4', res)
@@ -359,7 +359,7 @@ class ManageWorkTestCase(unittest.TestCase):
                  'Реестр листков нетрудоспособности','Форма 4', 'Справочник ОКВЭД-ОКОНХ','Страховые случаи',
                  'Профилактика')
         packs_for_delete_1 = ['Форма 6', 'Анкета страхователя', 'Делопроизводство']
-        packs_for_delete_2 = ['Профилактика', 'Справочник ОКВЭД-ОКОНХ']
+        packs_for_delete_2 = ['Профилактика', 'Справочник ОКВЭД-ОКОНХ', 'Ревизор']
 
         # make eiis packets
         for name in packs:
@@ -439,12 +439,17 @@ class ManageWorkTestCase(unittest.TestCase):
         fn = os.path.join(self.manager.eiispath, 'Бухгалтерия', 'compkeep.exe')
         create_test_repo(self.manager.eiispath, create_random=False, packages=installed)
         create_test_repo(self.manager.buffer, create_random=False, packages=updated)
+        somefile = os.path.join(self.manager.buffer, 'some_file.dat')
+
+        with open(somefile, 'w') as fp:
+            fp.write('test')
 
         self.assertEqual(os.path.getsize(fn), 2048)
-
+        self.assertIn(os.path.basename(somefile), os.listdir(self.manager.buffer))
         self.assertNotEqual(len(os.listdir(self.manager.buffer)), 0)
-        self.assertEqual(len(os.listdir(self.manager.buffer)), 2)
-        self.assertEqual(len(os.listdir(self.manager.eiispath)), 2)
+        self.assertEqual(len(os.listdir(self.manager.buffer)), 4)
+        # self.assertEqual(len(os.listdir(self.manager.eiispath)), 2)
+        self.assertFalse(self.manager.buffer_is_empty())
 
         # with open(fn), self.assertLogs(self.logger, level='ERROR') as cm:
         #         self.manager.install_packets()
@@ -453,13 +458,160 @@ class ManageWorkTestCase(unittest.TestCase):
         with open(fn, 'rb'): #, self.assertRaises(PacketInstallError):
             self.manager.install_packets()
 
-        # with self.assertLogs(__name__, level='INFO') as cm:
-        #     self.manager.install_packets()
-        # self.assertLogs(cm.output, 'Бухгалтерия установлен')
-
-        self.assertEqual(len(os.listdir(self.manager.eiispath)), 3)
         self.assertEqual(os.path.getsize(fn), 21548)
 
+        self.manager._clean_buffer()
+        self.assertTrue(self.manager.buffer_is_empty())
+
+    def test_handle_files(self):
+        # подготовка файлов в репозитории
+        self.manager = Manager(self.repodir.name, workdir=self.workdir.name, eiispath=self.eiispath.name,
+                               logger=self.logger, threads=3)
+
+        new_packet = {
+            'Новый пакет': [('Новый небитый файл', 2048),
+                            ('Новый небитый файл2', 2048),
+                            ('Новый небитый файл3', 2048),
+                            ('Новый небитый файл4', 2048),
+                            ('Новый небитый файл5', 2048),
+                            ('Новый небитый файл6', 2048),
+                            ('Новый битый файл', 4096)]
+            }
+
+        create_test_repo(self.manager.repo, create_random=False, packages=new_packet)
+
+        fp = os.path.join(self.manager.repo, 'Новый пакет', 'Новый небитый файл')
+        fp_hash = file_hash_calc(fp)
+
+        self.manager.activate()
+        self.manager.action_list['install'] = [
+            ('Новый пакет', Action.install, 'Новый небитый файл', fp_hash),
+            ('Новый пакет', Action.install, 'Новый небитый файл2', file_hash_calc(
+                os.path.join(self.manager.repo, 'Новый пакет', 'Новый небитый файл2'))),
+            ('Новый пакет', Action.install, 'Новый небитый файл3', file_hash_calc(
+                os.path.join(self.manager.repo, 'Новый пакет', 'Новый небитый файл3'))),
+            ('Новый пакет', Action.install, 'Новый небитый файл4', file_hash_calc(
+                os.path.join(self.manager.repo, 'Новый пакет', 'Новый небитый файл4'))),
+            ('Новый пакет', Action.install, 'Новый небитый файл5', file_hash_calc(
+                os.path.join(self.manager.repo, 'Новый пакет', 'Новый небитый файл5'))),
+            ]
+
+        self.manager.action_list['update'] = []
+
+        self.assertTrue(self.manager.buffer_is_empty())
+
+        self.manager.handle_files()
+
+        fpath = os.path.join(self.manager.buffer, 'Новый пакет', 'Новый небитый файл')
+        self.assertFalse(self.manager.buffer_is_empty())
+        self.assertIn('Новый пакет', os.listdir(self.manager.buffer))
+        self.assertTrue(os.path.exists(fpath))
+        self.assertEqual(fp_hash, file_hash_calc(fpath))
+        self.assertEqual(len(os.listdir(self.manager.buffer)), 1)
+        self.assertEqual(len(os.listdir(os.path.join(self.manager.buffer, 'Новый пакет'))), 5)
+
+        ## handle corrupted file
+        self.manager.action_list['install'] = [
+            ('Новый пакет', Action.install, 'Новый битый файл', fp_hash[:-1]),
+            ('Новый пакет', Action.install, 'Новый небитый файл6', file_hash_calc(
+                os.path.join(self.manager.repo, 'Новый пакет', 'Новый небитый файл6'))),
+            ]
+
+        with self.assertRaises(DownloadPacketError):
+            self.manager.handle_files()
+
+        self.assertTrue(os.path.exists(os.path.join(self.manager.buffer,'Новый пакет', 'Новый небитый файл6')))
+        self.assertFalse(os.path.exists(os.path.join(self.manager.buffer,'Новый пакет', 'Новый битый файл')))
+
+        self.manager.install_packets()
+        self.assertTrue(os.path.exists(os.path.join(self.manager.eiispath, 'Новый пакет', 'Новый небитый файл')))
+        self.assertTrue(os.path.exists(os.path.join(self.manager.eiispath, 'Новый пакет', 'Новый небитый файл5')))
+
+        ## handle update/delete files
+        old_crc = file_hash_calc(os.path.join(self.manager.repo, 'Новый пакет', 'Новый небитый файл6'))
+        new_packet = {
+            'Новый пакет': [('Новый небитый файл6', 2048 * 10)]
+            }
+
+        create_test_repo(self.manager.repo, create_random=False, packages=new_packet)
+
+        new_crc = file_hash_calc(os.path.join(self.manager.repo, 'Новый пакет', 'Новый небитый файл6'))
+        self.manager.action_list['install'] = []
+        self.manager.action_list['update'] = [
+            ('Новый пакет', Action.delete, 'Новый небитый файл', None),
+            ('Новый пакет', Action.delete, 'Неизвестный файл', None),
+            ('Новый пакет', Action.update, 'Новый небитый файл6', new_crc),
+
+            ]
+
+        self.manager.handle_files()
+
+        self.assertFalse(os.path.exists(os.path.join(self.manager.eiispath, 'Новый пакет', 'Новый небитый файл')))
+        self.assertNotEqual(old_crc, new_crc)
+        self.assertEqual(os.path.getsize(os.path.join(self.manager.buffer, 'Новый пакет', 'Новый небитый файл6')),
+                         2048 * 10)
+
+
+class ManageWholeProcessCase(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.workdir = get_temp_dir(prefix='workdir_')
+        cls.repodir = get_temp_dir(prefix='repodir_')
+        cls.eiispath = get_temp_dir(prefix='eiisdir_')
+
+        cls.logger = logging.getLogger(__name__)
+        cls.logger.addHandler(logging.StreamHandler(sys.stdout))
+
+        # создаем тестовый репозиторий
+        create_test_repo(cls.repodir.name)
+        cls.repomanager = Repomanager(cls.repodir.name)
+        cls.repomanager.index()
+
+        index_file_path = os.path.join(cls.repodir.name, 'Index.gz')
+        index_file_path_hash = os.path.join(cls.repodir.name, 'Index.gz.sha1')
+        cls.remote_test_index = from_json(gzip_read(index_file_path))
+        with open(index_file_path_hash) as fp:
+            cls.remote_test_index_hash = fp.read()
+
+    @classmethod
+    def tearDownClass(cls):
+        print('\n press any key')
+        input()
+
+        cls.workdir.cleanup()
+        cls.repodir.cleanup()
+        cls.eiispath.cleanup()
+
+    def setUp(self):
+        self.repomanager.index()
+
+        self.manager = Manager(self.repodir.name, workdir=self.workdir.name, eiispath=self.eiispath.name,
+                               logger=self.logger)
+        self.installed = self.manager.get_installed_packets_list()
+        self.selected = self.manager.get_selected_packets_list()
+
+    def tearDown(self):
+        pass
+
+    def test_start_from_zero(self):
+        self.manager.start(self.installed, self.selected)
+
+        self.assertTrue(self.manager.buffer_is_empty())
+        self.assertSequenceEqual(self.manager.get_installed_packets_list(), ())
+        self.assertSequenceEqual(self.manager.get_local_index(), ())
+        self.assertIsNone(self.manager.get_local_index_hash())
+
+        ## подготовка к следующему тесту: установка подсистемы Бухгалтерия
+        with open(self.manager.selected_packets_list_file, 'w') as fp:
+            fp.write('Бухгалтерия')
+
+    def test_start_install_packet(self):
+        self.manager.start(self.installed, self.selected)
+
+        # self.assertTrue(self.manager.buffer_is_empty())
+        self.assertSequenceEqual(self.manager.get_installed_packets_list(), ('Бухгалтерия',))
+        # self.assertDictEqual(self.manager.get_local_index(), {})
+        # self.assertIsNone(self.manager.get_local_index_hash())
 
 if __name__ == '__main__':  # pragma: nocover
     unittest.main()

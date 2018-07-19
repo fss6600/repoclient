@@ -19,13 +19,13 @@ else:
 from collections import Counter, namedtuple
 from datetime import datetime
 from enum import Enum
-from queue import Queue
+from queue import Queue, Empty
 from collections.abc import Iterable
 from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR
 from eiisclient.core.dispatch import get_dispatcher
 from eiisclient.core.utils import get_temp_dir, file_hash_calc, from_json
 from eiisclient.core.exceptions import (
-    RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, PacketInstallError)
+    RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, PacketInstallError, DownloadPacketError)
 
 CONFIGFILE = os.path.normpath(os.path.join(WORKDIR, 'config.json'))
 INDEXFILE = os.path.normpath(os.path.join(WORKDIR, 'index.json'))
@@ -132,7 +132,7 @@ class Manager(object):
 
             # загрузка файлов пакетов из репозитория
             self.logger.info('загрузка пакетов из репозитория в буфер:')
-            download_duration = self.get_new_files()
+            download_duration = self.handle_files()
             self.logger.info('пакеты загружены за {}'.format(download_duration))
 
             # перемещение скачанных пакетов из буфера в папку установки
@@ -320,8 +320,9 @@ class Manager(object):
             source_data = self.action_list[key]
 
             for packname, action, src, crc in source_data:
-                task = namedtuple('Task', ('action', 'src', 'dst', 'crc'))
+                task = namedtuple('Task', ('packetname', 'action', 'src', 'dst', 'crc'))
 
+                task.packetname = packname
                 task.action = action
                 if action == Action.delete:
                     task.src = os.path.join(self.eiispath, packname, src)  # путь файла для удаления
@@ -333,34 +334,37 @@ class Manager(object):
 
                 yield task
 
-    def get_new_files(self):
-        '''Получить новые файлы из репозитория'''
-        start_time = datetime.timestamp(datetime.now())
+    def handle_files(self):
+        '''Получить новые файлы из репозитория или удалить локально старые'''
+        error = False
 
         main_queue = Queue(maxsize=self.threads * self.task_queue_k)
-        count_queue = Queue()
+        exc_queue = Queue()
 
         for i in range(self.threads):
-            disp = get_dispatcher(self.repo, encode=self.encode, queue=count_queue)
-            worker = Worker(main_queue, disp)
+            disp = get_dispatcher(self.repo, encode=self.encode)
+            worker = Worker(main_queue, exc_queue, disp)
             worker.setName('{}'.format(worker))
             worker.setDaemon(True)
             worker.start()
-
-        # update_gauge_data = Gauge(2, self.callback, count_queue, self.files_count)
-        # update_gauge_data.start()
 
         gen_task = self.get_task()
 
         for task in gen_task:
             main_queue.put(task)
 
-        main_queue.join()
-        count_queue.join()
+        main_queue.join()  # ожидаем окончания обработки очереди
 
-        # update_gauge_data.cancel()
-
-        return datetime.timestamp(datetime.now()) - start_time
+        while True:
+            try:
+                exc = exc_queue.get(block=False)
+            except Empty:
+                break
+            else:
+                self.logger.error(exc)
+                error = True
+        if error:
+            raise DownloadPacketError
 
     def install_packets(self):
         '''Копирование пакетов из буфера в папку установки'''
@@ -430,7 +434,7 @@ class Manager(object):
             return lnpath
 
     def _clean_buffer(self):
-        pass
+        shutil.rmtree(self.buffer)
 
 
 class Worker(threading.Thread):
@@ -438,9 +442,10 @@ class Worker(threading.Thread):
     max_repeat = 5
     stop_retrieve = threading.Event()
 
-    def __init__(self, queue, dispatcher, *args, **kwargs):
+    def __init__(self, queue, exc_queue, dispatcher, *args, **kwargs):
         super(Worker, self).__init__(*args, **kwargs)
         self.queue = queue
+        self.exceptions = exc_queue
         self.dispatcher = dispatcher
 
     def __repr__(self):
@@ -461,16 +466,20 @@ class Worker(threading.Thread):
                 self.remove_file(task.src)
             else:
                 fp = self.dispatcher.get_file(task.src)
+                hash_sum = file_hash_calc(fp)
 
-                if not file_hash_calc(fp) == task.crc:
+                if not hash_sum == task.crc:
                     self.files_faulted[task.src] += 1
                     fault_count = self.files_faulted.get(task.src)
                     if fault_count is not None and fault_count > self.max_repeat:
-                        raise IOError('Не удалось загрузить файл {}'.format(fault_count))
-                    self.queue.put(task)
+                        self.exceptions.put('Ошибка загрузки файла "{}" из пакета "{}"'.format(os.path.basename(task.src),
+                                                                                          task.packetname))
+                    else:
+                        self.queue.put(task)
                 else:
                     self.dispatcher.move(fp, task.dst)
-                    self.queue.task_done()
+
+            self.queue.task_done()
 
     def remove_file(self, fpath):
         try:
@@ -487,24 +496,3 @@ class Worker(threading.Thread):
                     os.unlink(fpath)
                 except Exception:
                     pass
-
-# class Gauge(threading.Timer):
-#     ''''''
-#
-#     def __init__(self, interval, callback, queue: Queue, files_volume: int,  *args, **kwargs):
-#         super().__init__(interval, self.get_sum, *args, **kwargs)
-#         self.callback = callback
-#         self.queue = queue
-#         self.files_volume = files_volume
-#         self.got_volume = 0
-#
-#     def get_sum(self, *args, **kwargs):
-#         ''''''
-#         with self.queue.mutex:
-#             summ = sum([s for s in self._get_item()])
-#         self.got_volume += summ
-#         self.callback(self.got_volume / self.files_volume)
-#
-#     def _get_item(self):
-#         while self.queue.full():
-#             yield self.queue.get(block=False)
