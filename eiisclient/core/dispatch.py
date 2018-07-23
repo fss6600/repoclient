@@ -1,19 +1,14 @@
 # -*- coding: utf-8 -*-
 #
-import gzip
-import hashlib
 import os
-import stat
 import re
 import shutil
+import stat
 import time
 import weakref
 
-
 from eiisclient import DEFAULT_ENCODING
-from eiisclient.core.utils import get_temp_dir
-from eiisclient.core.utils import from_json, to_json, gzip_read
-from eiisclient import WORKDIR
+from eiisclient.core.utils import from_json, get_temp_dir, gzip_read
 
 BUSYMESSAGE = '__UPDATE_IN_PROCESS__'
 
@@ -235,7 +230,7 @@ class FTPDispatcher(BaseDispatcher):
             }
 
     def ftp_init(self):
-        from ftplib import FTP, error_reply
+        from ftplib import FTP
         ftp = FTP()
         ftp.encoding = self.ftpencode
         try:

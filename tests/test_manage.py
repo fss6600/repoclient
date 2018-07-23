@@ -1,19 +1,19 @@
+import copy
 import logging
 import os
 import sys
 import unittest
-from collections import Counter, namedtuple
-from pprint import pprint
-import copy
-from eiisclient.core.manage import Action, Status, Manager
-from eiisclient.core.utils import get_temp_dir, gzip_read, from_json, to_json, file_hash_calc
-from eiisclient.core.exceptions import *
-from tests.utils import create_test_repo
-from tests.eiisrepo.eiisrepo import Manager as Repomanager
+from collections import Counter
 from collections.abc import Iterator
 
+from eiisclient.core.exceptions import *
+from eiisclient.core.manage import Action, Manager, Status
+from eiisclient.core.utils import file_hash_calc, from_json, get_temp_dir, gzip_read, to_json
+from tests.eiisrepo.eiisrepo import Manager as Repomanager
+from tests.utils import FILEFORDELETE, create_test_repo
 
-class ManageTestCase(unittest.TestCase):
+
+class Manage_1_TestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.workdir = get_temp_dir(prefix='workdir_')
@@ -74,7 +74,7 @@ class ManageTestCase(unittest.TestCase):
         self.assertTrue(self.manager.buffer_is_empty())
 
 
-class ManageWorkTestCase(unittest.TestCase):
+class Manage_2_WorkTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.workdir = get_temp_dir(prefix='workdir_')
@@ -355,22 +355,24 @@ class ManageWorkTestCase(unittest.TestCase):
         self.assertIn('Бухгалтерия', res)
 
     def test_delete_packets(self):
-        packs = ('Форма 6', 'Анкета страхователя', 'Делопроизводство', 'Ревизор', 'Регистратор',
+        packs = ('Форма 16', 'Анкета страхователя', 'Делопроизводство', 'Ревизор2', 'Регистратор',
                  'Реестр листков нетрудоспособности','Форма 4', 'Справочник ОКВЭД-ОКОНХ','Страховые случаи',
                  'Профилактика')
-        packs_for_delete_1 = ['Форма 6', 'Анкета страхователя', 'Делопроизводство']
-        packs_for_delete_2 = ['Профилактика', 'Справочник ОКВЭД-ОКОНХ', 'Ревизор']
+        packs_for_delete_1 = ['Форма 16', 'Анкета страхователя', 'Делопроизводство']
+        packs_for_delete_2 = ['Профилактика', 'Справочник ОКВЭД-ОКОНХ', 'Ревизор2']
 
         # make eiis packets
         for name in packs:
             os.makedirs(os.path.join(self.eiispath.name, name))
 
-        self.manager.action_list['delete'] = iter(packs_for_delete_1)
         self.manager.activate()
+        self.manager.action_list['delete'] = iter(packs_for_delete_1)
 
         self.manager.delete_packets()
+
         res = os.listdir(self.eiispath.name)
         self.assertEqual(len(res), len(packs))  # пакеты не удалены
+
         for name in packs_for_delete_1:
             self.assertIn('{}.removed'.format(name), res)
 
@@ -552,7 +554,7 @@ class ManageWorkTestCase(unittest.TestCase):
                          2048 * 10)
 
 
-class ManageWholeProcessCase(unittest.TestCase):
+class Manage_3_WholeProcessCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.workdir = get_temp_dir(prefix='workdir_')
@@ -575,8 +577,8 @@ class ManageWholeProcessCase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        print('\n press any key')
-        input()
+        # print('\n press any key')
+        # input()
 
         cls.workdir.cleanup()
         cls.repodir.cleanup()
@@ -593,25 +595,161 @@ class ManageWholeProcessCase(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def test_start_from_zero(self):
+    def test_1_start_from_zero(self):
         self.manager.start(self.installed, self.selected)
 
         self.assertTrue(self.manager.buffer_is_empty())
         self.assertSequenceEqual(self.manager.get_installed_packets_list(), ())
-        self.assertSequenceEqual(self.manager.get_local_index(), ())
-        self.assertIsNone(self.manager.get_local_index_hash())
+        local_index_data = self.manager.get_local_index()
+        self.assertIn('Бухгалтерия', local_index_data.keys())
+        hash_data = self.manager.get_local_index_hash()
+        self.assertIsNotNone(hash_data)
+        self.assertEqual(len(hash_data), 40)
 
         ## подготовка к следующему тесту: установка подсистемы Бухгалтерия
         with open(self.manager.selected_packets_list_file, 'w') as fp:
             fp.write('Бухгалтерия')
 
-    def test_start_install_packet(self):
+    def test_2_start_install_packet(self):
+        selected = self.selected
+        installed = self.installed
+        self.manager.start(installed, selected)
+
+        self.assertTrue(self.manager.buffer_is_empty())
+        self.assertSequenceEqual(self.manager.get_installed_packets_list(), ('Бухгалтерия',))
+        self.assertNotEqual(len(self.manager.get_local_index()), 0)
+        self.assertIn('Бухгалтерия', self.manager.get_local_index().keys())
+        self.assertIsNotNone(self.manager.get_local_index_hash())
+
+    def test_3_start_update_packet(self):
+        # меняем данные в репозитории
+        name0, size0 = 'new_file', 5000
+        name1, size1 = 'compkeep.exe', 22346
+        name2, size2 = 'compkeep.ini', 3089
+        name3 = FILEFORDELETE
+        new_data = {
+            'Бухгалтерия':
+                [
+                    (name0, size0),
+                    (name1, size1),
+                    (name2, size2),
+                    ],
+            }
+        create_test_repo(self.repodir.name, create_random=False, packages=new_data)
+        path_file_for_delete = (os.path.join(self.manager.eiispath, 'Бухгалтерия', name3))
+        os.unlink(path_file_for_delete)  # удаляем файл из репозитория
+        self.repomanager.index()  # индексируем
+
+        self.manager.activate()
         self.manager.start(self.installed, self.selected)
 
-        # self.assertTrue(self.manager.buffer_is_empty())
-        self.assertSequenceEqual(self.manager.get_installed_packets_list(), ('Бухгалтерия',))
-        # self.assertDictEqual(self.manager.get_local_index(), {})
-        # self.assertIsNone(self.manager.get_local_index_hash())
+        ##
+        self.manager.activate()
+        path0 = os.path.join(self.manager.eiispath, 'Бухгалтерия', name0)
+        path1 = os.path.join(self.manager.eiispath, 'Бухгалтерия', name1)
+        path2 = os.path.join(self.manager.eiispath, 'Бухгалтерия', name2)
+
+        fhash0 = file_hash_calc(path0)
+        fhash1 = file_hash_calc(path1)
+        fhash2 = file_hash_calc(path2)
+        fsize0 = os.path.getsize(path0)
+        fsize1 = os.path.getsize(path1)
+        fsize2 = os.path.getsize(path2)
+        remote_index = self.manager.get_remote_index()
+        remote_hash = self.manager.get_remote_index_hash()
+        local_index = self.manager.get_local_index()
+        local_hash = self.manager.get_local_index_hash()
+        self.manager.deactivate()
+
+        self.assertTrue(os.path.exists(path0), 'файл {} должен быть в папке установки'.format(name0))
+
+        self.assertEqual(remote_index['Бухгалтерия']['files'][name0], fhash0)
+        self.assertEqual(remote_index['Бухгалтерия']['files'][name1], fhash1)
+        self.assertEqual(remote_index['Бухгалтерия']['files'][name2], fhash2)
+
+        self.assertEqual(size0, fsize0)
+        self.assertEqual(size1, fsize1)
+        self.assertEqual(size2, fsize2)
+
+        self.assertDictEqual(remote_index, local_index)
+        self.assertEqual(remote_hash, local_hash)
+
+        self.assertFalse(os.path.exists(path_file_for_delete), 'файла {} быть не должно'.format(name3))
+
+    def test_4_start_delete_packet(self):
+        selected = os.path.join(self.workdir.name, 'selected')
+        self.assertTrue(os.path.exists(selected))
+
+        with open(selected, 'w') as fp:
+            fp.write('')
+
+        ## попытка удаления пакета с запущенной подсистемой
+        path0 = os.path.join(self.eiispath.name, 'Бухгалтерия', 'compkeep.exe')
+        with open(path0), self.assertLogs(__name__, logging.ERROR) as cm:
+            self.manager.activate()
+            self.selected = self.manager.get_selected_packets_list()
+            self.manager.start(self.installed, self.selected)
+        message = cm.output[0]
+        self.assertIn('Отказано в доступе', message)
+        self.assertIn('Бухгалтерия', os.listdir(self.eiispath.name))
+
+        ## удаление (переименование пакета)
+        self.manager.activate()
+        self.selected = self.manager.get_selected_packets_list()
+        self.manager.start(self.installed, self.selected)
+
+        self.manager.activate()
+        self.assertFalse(self.manager.local_packet_exists('Бухгалтерия'))
+        self.assertNotIn('Бухгалтерия', os.listdir(self.eiispath.name))
+        self.assertIn('Бухгалтерия.removed', os.listdir(self.eiispath.name))
+        self.manager.deactivate()
+
+    def test_5_start_backup_packet(self):
+        selected = os.path.join(self.workdir.name, 'selected')
+        self.assertTrue(os.path.exists(selected))
+
+        with open(selected, 'w') as fp:
+            fp.write('Бухгалтерия\n')
+
+        self.manager.activate()
+        self.selected = self.manager.get_selected_packets_list()
+        self.manager.start(self.installed, self.selected)
+
+        self.manager.activate()
+        self.assertTrue(self.manager.local_packet_exists('Бухгалтерия'))
+        self.assertNotIn('Бухгалтерия.removed', os.listdir(self.eiispath.name))
+        self.assertIn('Бухгалтерия', os.listdir(self.eiispath.name))
+        self.manager.deactivate()
+
+    def test_5_start_purge_packet(self):
+        selected = os.path.join(self.workdir.name, 'selected')
+        self.assertTrue(os.path.exists(selected))
+
+        with open(selected, 'w') as fp:
+            fp.write('')
+
+        ## попытка удаления пакета с запущенной подсистемой
+        path0 = os.path.join(self.eiispath.name, 'Бухгалтерия', 'compkeep.exe')
+        with open(path0), self.assertLogs(__name__, logging.ERROR) as cm:
+            self.manager.activate()
+            self.selected = self.manager.get_selected_packets_list()
+            self.manager.start(self.installed, self.selected)
+        message = cm.output[0]
+        self.assertIn('Отказано в доступе', message)
+        self.assertIn('Бухгалтерия', os.listdir(self.eiispath.name))
+
+        ## удаление
+        self.manager.activate()
+        self.selected = self.manager.get_selected_packets_list()
+        self.manager.purge = True
+        self.manager.start(self.installed, self.selected)
+
+        self.manager.activate()
+        self.assertFalse(self.manager.local_packet_exists('Бухгалтерия'))
+        self.assertNotIn('Бухгалтерия', os.listdir(self.eiispath.name))
+        self.assertNotIn('Бухгалтерия.removed', os.listdir(self.eiispath.name))
+        self.manager.deactivate()
+
 
 if __name__ == '__main__':  # pragma: nocover
     unittest.main()

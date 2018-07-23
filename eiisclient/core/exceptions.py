@@ -21,5 +21,13 @@ class PacketInstallError(Exception):
         return 'Ошибка установки пакета'
 
 
+class PacketDeleteError(Exception):
+    pass
+
+
 class DownloadPacketError(Exception):
+    pass
+
+
+class LinkUpdateError(Exception):
     pass

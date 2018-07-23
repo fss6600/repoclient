@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import glob
 import logging
 import os
 import shutil
@@ -17,15 +18,16 @@ else:
     NOLINKS = False
 
 from collections import Counter, namedtuple
-from datetime import datetime
 from enum import Enum
 from queue import Queue, Empty
 from collections.abc import Iterable
 from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR
 from eiisclient.core.dispatch import get_dispatcher
-from eiisclient.core.utils import get_temp_dir, file_hash_calc, from_json
+from eiisclient.core.eiisreestr import REESTR
 from eiisclient.core.exceptions import (
-    RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, PacketInstallError, DownloadPacketError)
+    RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, PacketInstallError, DownloadPacketError,
+    PacketDeleteError, LinkUpdateError)
+from eiisclient.core.utils import get_temp_dir, file_hash_calc, from_json, to_json
 
 CONFIGFILE = os.path.normpath(os.path.join(WORKDIR, 'config.json'))
 INDEXFILE = os.path.normpath(os.path.join(WORKDIR, 'index.json'))
@@ -40,9 +42,9 @@ class Status(Enum):
     installed, removed, purged = range(3)
 
 
-def get_null_logger():  # todo: remove
+def get_null_logger():
     logger = logging.Logger(__name__)
-    logger.addHandler(logging.NullHandler())
+    logger.addHandler(logging.StreamHandler(stream=sys.stdout()))
     return logger
 
 
@@ -65,18 +67,87 @@ class Manager(object):
         self.local_index_file_hash = os.path.join('{}.sha1'.format(self.local_index_file))
         self.selected_packets_list_file = os.path.join(self.workdir, 'selected')
         self.during_time = 0
-        self.files_count = 0  # -
+        # self.files_count = 0  # -
         self.disp = None
         self.action_list = {}
         self.local_index = None
         self.remote_index = None
+        self.remote_index_hash = None
+        self.desktop = winshell.desktop() if not NOLINKS else None
         self.finalize = weakref.finalize(self, self._clean)
 
     def __str__(self):
         return '<Manager: {}'.format(id(self))
 
-    def _clean(self):
-        self.tempdir.cleanup()
+    def start(self, installed: Iterable, selected: Iterable):
+        ''''''
+        #  определение action_list на установку, обновление и удаление
+        install, update, delete = self.get_lists_difference(installed, selected)
+
+        try:
+            self.activate()
+            self.local_index = self.get_local_index() or {}
+            if self.repo_updated():
+                self.remote_index = self.get_remote_index()
+            else:
+                self.remote_index = self.local_index
+
+            if install:
+                self.action_list['install'] = self.parse_data_by_action(install, Action.install)
+
+            if update and self.repo_updated():
+                self.action_list['update'] = self.parse_data_by_action(update, Action.update)
+
+            if delete:
+                self.action_list['delete'] = self.parse_data_by_action(delete, Action.delete)
+
+            # загрузка файлов пакетов из репозитория
+            if any((install, update)):
+                self.handle_files()
+
+            # деактивация пакетов, помеченных на удаление
+            if delete:
+                self.delete_packets()
+
+            # перемещение скачанных пакетов из буфера в папку установки
+            if not self.buffer_is_empty():
+                self.logger.info('перенос пакетов из буфера в папку установки')
+                self.install_packets()
+
+        except DispatcherActivationError:
+            self.logger.error('Ошибка соединения с репозиторием')
+            return
+
+        except PacketInstallError:
+            self.logger.error('Ошибка установки пакетов подсистем')
+            return
+
+        except PacketDeleteError:
+            self.logger.error('Ошибка удаления пакетов подсистем')
+            return
+
+        except DownloadPacketError:
+            self.logger.error('Ошибка загрузки пакетов подсистем')
+            return
+
+        except Exception as err:
+            self.logger.error('Ошибка обновления пакетов подсистем: {}'.format(err))
+            return
+
+        else:
+            # запись данных нового индекса
+            with open(self.local_index_file, 'w') as fp:
+                fp.write(to_json(self.remote_index))
+
+            # хэш
+            with open(self.local_index_file_hash, 'w') as fp:
+                fp.write(to_json(self.remote_index_hash))
+
+            # очистка буфера
+            self._clean_buffer()
+
+        finally:
+            self.deactivate()
 
     def repo_busy_check(self):
         if self.disp.repo_is_busy():
@@ -86,8 +157,16 @@ class Manager(object):
         '''Проверка на наличие обновлений'''
         self.repo_busy_check()
         old_index_hash = self.get_local_index_hash()
-        new_index_hash = self.disp.get_index_hash()
-        return not old_index_hash == new_index_hash
+        self.remote_index_hash = self.get_remote_index_hash()
+        return not old_index_hash == self.remote_index_hash
+
+    def buffer_is_empty(self):
+        try:
+            count = len(os.listdir(self.buffer))
+        except FileNotFoundError:
+            return True
+        else:
+            return count == 0
 
     @property
     def activated(self):
@@ -97,8 +176,11 @@ class Manager(object):
         ''''''
         try:
             self.disp = get_dispatcher(self.repo, logger=self.logger, encode=self.encode)
+            self.action_list['install'] = ()
+            self.action_list['update'] = ()
+            self.action_list['delete'] = ()
         except Exception as err:
-            raise PacketInstallError from err
+            raise DispatcherActivationError(err)
 
     def deactivate(self):
         self.disp = None
@@ -108,58 +190,6 @@ class Manager(object):
 
     def get_info(self):
         pass
-
-    def start(self, installed: Iterable, selected: Iterable):
-        ''''''
-        try:
-            self.activate()
-
-            self.logger.info('Проверка на наличие обновлений')
-            if not self.repo_updated():
-                self.logger.info('Обновлений нет')
-                return
-
-            self.logger.info('Обнаружены обновления.')
-            self.local_index = self.get_local_index() or {}
-            self.remote_index = self.get_remote_index()
-
-            #  определяем action_list на установку, обновление и удаление
-            install, update, delete = self.get_lists_difference(installed, selected)
-
-            self.action_list['install'] = self.parse_data_by_action(install, Action.install)
-            self.action_list['update'] = self.parse_data_by_action(update, Action.update)
-            self.action_list['delete'] = self.parse_data_by_action(delete, Action.delete)
-
-            # загрузка файлов пакетов из репозитория
-            self.logger.info('загрузка пакетов из репозитория в буфер:')
-            download_duration = self.handle_files()
-            self.logger.info('пакеты загружены за {}'.format(download_duration))
-
-            # перемещение скачанных пакетов из буфера в папку установки
-            if not self.buffer_is_empty():
-                self.logger.info('перенос пакетов из буфера в папку установки')
-                self.install_packets()
-
-            # деактивация пакетов, помеченных на удаление
-            if self.action_list.get('delete'):
-                self.logger.info('удаление пакетов:')
-                res = self.delete_packets()
-
-            # обновление ярлыков подсистем на рабочем столе
-            if NOLINKS:
-                self.logger.debug('невозможно создать ярлыки - ошибка импорта библиотеки win32')
-            else:
-                self.update_links()
-
-        except Exception as err:  # todo обработку исключений по типам
-            self.logger.error(err)
-            return
-        else:
-            # запись данных нового индекса и хэша локально
-            # очистка буфера
-            pass
-        finally:
-            self.deactivate()
 
     def get_installed_packets_list(self) -> tuple:
         '''Список активных подсистем
@@ -207,10 +237,13 @@ class Manager(object):
                 new_pack_path = '{}.removed'.format(pack_path)
                 os.rename(pack_path, new_pack_path)
             except Exception as err:
-                self.logger.error('ошибка удаления пакета {}'.format(packet))
-                raise IOError(err)  #todo заменить исключение
+                self.logger.debug('ошибка удаления пакета {}: {}'.format(packet, err))
+                raise PacketDeleteError
             else:
                 self.logger.info('{} - помечен как удаленный'.format(packet))
+
+            # удаление ярлыка подсистемы
+            self.remove_shortcut(packet)
 
     def get_remote_index(self):
         if self.activated:
@@ -222,6 +255,9 @@ class Manager(object):
                 raise
         else:
             raise DispatcherNotActivated
+
+    def get_remote_index_hash(self):
+        return self.disp.get_index_hash()
 
     def get_local_index(self):
         try:
@@ -385,56 +421,81 @@ class Manager(object):
                             os.makedirs(os.path.dirname(d), exist_ok=True)
                             shutil.copy2(s, d)
 
+                # создание ярлыка
+                title, exe_file_path = self._get_link_data(packet)
+                self.create_shortcut(title, exe_file_path)
+
+            except LinkUpdateError as err:
+                self.logger.debug('ошибка создания ярлыка для {}: {}'.format(packet, err))
+
             except Exception as err:
                 self.logger.error('ошибка установки пакета {}'.format(packet))
-                raise PacketInstallError from err
+                raise PacketInstallError(err)
             else:
                 self.logger.info('{} установлен'.format(packet))
 
     def update_links(self):
-        pass
-
-    def buffer_is_empty(self):
-        try:
-            count = len(os.listdir(self.buffer))
-        except FileNotFoundError:
-            return True
-        else:
-            return count == 0
+        for packet in self.get_installed_packets_list():
+            try:
+                title, exe_file_path = self._get_link_data(packet)
+                self.create_shortcut(title, exe_file_path)
+            except LinkUpdateError as err:
+                self.logger.error('Ошибка создания ярлыка: {}'.format(err))
 
     def create_shortcut(self, title, exe_file_path):
         """
         Создание ярлыка запуска подсистемы
 
-        :param title:           Наименование подсистемы
-        :param exe_file_path:   Путь к исполняемому файлу
-        :return:                Путь к ярлыку на рабочем столе
+        :param
         """
+        if NOLINKS:
+            raise LinkUpdateError('ошибка импорта библиотеки win32')
+
+        if not exe_file_path:
+            raise LinkUpdateError('недостаточно данных для создания ярлыка для {}'.format(title))
+
+        lnpath = os.path.join(self.desktop, title + '.lnk')
+        target = icon = exe_file_path
+        workdir = os.path.dirname(exe_file_path)
+        shell = Dispatch('WScript.Shell')
+
+        shortcut = shell.CreateShortCut(lnpath)
+        shortcut.Targetpath = target
+        shortcut.WorkingDirectory = workdir
+        shortcut.IconLocation = icon
+        shortcut.save()
+
+    def remove_shortcut(self, packet):
+        title, _ = self._get_link_data(packet)
+        link_path = os.path.join(self.desktop, title + '.lnk')
         try:
-            import winshell
-            from win32com.client import Dispatch
-        except ImportError as err:
-            self.logger.error('** Не удалось установить ярлык для "{}"'.format(title))
-            self.logger.debug('ошибка импорта: {}'.format(err))
-            return
-        else:
-            desktop = winshell.desktop()
-            lnpath = os.path.join(desktop, title + '.lnk')
-            target = icon = exe_file_path
-            # workdir = os.path.join(os.path.expandvars('%USERPROFILE%'), 'EIIS', title)
-            workdir = os.path.dirname(exe_file_path)
-            shell = Dispatch('WScript.Shell')
+            os.unlink(link_path)
+        except FileNotFoundError:
+            pass
 
-            shortcut = shell.CreateShortCut(lnpath)
-            shortcut.Targetpath = target
-            shortcut.WorkingDirectory = workdir
-            shortcut.IconLocation = icon
-            shortcut.save()
-
-            return lnpath
+    def _clean(self):
+        self.tempdir.cleanup()
 
     def _clean_buffer(self):
-        shutil.rmtree(self.buffer)
+        try:
+            shutil.rmtree(self.buffer)
+        except FileNotFoundError:
+            pass
+
+    def _get_link_data(self, packet):
+        title = self.remote_index[packet].get('title') or packet
+        binaries = glob.glob(r'{}\*.exe'.format(os.path.join(self.eiispath, packet)))
+        count = len(binaries)
+        if count > 1:
+            # todo: добавить возможность добавлять свои данные в реестр подсистем
+            exefilename = REESTR.get(packet)
+            exe_file_path = os.path.join(self.eiispath, packet, exefilename) if exefilename else None
+        elif count == 1:
+            exe_file_path = binaries[0]
+        else:
+            exe_file_path = None
+
+        return title, exe_file_path
 
 
 class Worker(threading.Thread):
