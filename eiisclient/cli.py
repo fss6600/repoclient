@@ -9,7 +9,7 @@ from logging.handlers import RotatingFileHandler
 
 import wx
 
-from eiisclient import DEFAULT_ENCODING, WORKDIR, __version__, DEFAULT_INSTALL_PATH
+from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, __version__
 from eiisclient.core.manage import Manager
 from eiisclient.core.utils import get_config_data
 from eiisclient.gui import GUI
@@ -107,8 +107,8 @@ def main():  # pragma: no cover
 
     if args.nogui:
         logger.addHandler(logging.StreamHandler(sys.stdout))
-        installed = manager.get_installed_packets_list()
-        selected = manager.get_selected_packets_list()
+        installed = manager.get_installed_packets()
+        selected = manager.get_selected_packets()
 
         try:
             manager.start(installed, selected)

@@ -28,6 +28,7 @@ from eiisclient.core.exceptions import (
     RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, PacketInstallError, DownloadPacketError,
     PacketDeleteError, LinkUpdateError)
 from eiisclient.core.utils import get_temp_dir, file_hash_calc, from_json, to_json
+from eiisclient import __version__
 
 CONFIGFILE = os.path.normpath(os.path.join(WORKDIR, 'config.json'))
 INDEXFILE = os.path.normpath(os.path.join(WORKDIR, 'index.json'))
@@ -42,9 +43,9 @@ class Status(Enum):
     installed, removed, purged = range(3)
 
 
-def get_null_logger():
+def get_null_logger() -> logging.Logger:
     logger = logging.Logger(__name__)
-    logger.addHandler(logging.StreamHandler(stream=sys.stdout()))
+    logger.addHandler(logging.StreamHandler(stream=sys.stdout))
     return logger
 
 
@@ -56,24 +57,22 @@ class Manager(object):
         self.logger = logger or get_null_logger()
         self.workdir = workdir or WORKDIR
         self.eiispath = eiispath or DEFAULT_INSTALL_PATH
+        self.tempdir = get_temp_dir(prefix='temp_')
+        self.buffer = os.path.join(self.workdir, 'buffer')
         self.encode = encode or DEFAULT_ENCODING
         self.purge = purge
         self.threads = threads
         self.task_queue_k = kwargs.get('kqueue', 2)  # коэффициент размера основной очереди загрузки
-
-        self.tempdir = get_temp_dir()
-        self.buffer = os.path.join(self.workdir, 'buffer')
         self.local_index_file = os.path.join(self.workdir, 'index.json')
         self.local_index_file_hash = os.path.join('{}.sha1'.format(self.local_index_file))
         self.selected_packets_list_file = os.path.join(self.workdir, 'selected')
-        self.during_time = 0
-        # self.files_count = 0  # -
-        self.disp = None
         self.action_list = {}
+        self.disp = None
         self.local_index = None
         self.remote_index = None
         self.remote_index_hash = None
-        self.desktop = winshell.desktop() if not NOLINKS else None
+        self.desktop = winshell.desktop() if not NOLINKS else \
+            os.path.normpath(os.path.join(os.path.expandvars('%USERPROFILE%'), 'Desktop'))
         self.finalize = weakref.finalize(self, self._clean)
 
     def __str__(self):
@@ -86,20 +85,22 @@ class Manager(object):
 
         try:
             self.activate()
-            self.local_index = self.get_local_index() or {}
-            if self.repo_updated():
-                self.remote_index = self.get_remote_index()
-            else:
-                self.remote_index = self.local_index
+
+            # self.local_index = self.get_local_index() or {}
+            #
+            # if self.repo_updated():
+            #     self.remote_index = self.get_remote_index()
+            # else:
+            #     self.remote_index = self.local_index
 
             if install:
-                self.action_list['install'] = self.parse_data_by_action(install, Action.install)
+                self.action_list['install'] = self.parse_data_by_action_gen(install, Action.install)
 
             if update and self.repo_updated():
-                self.action_list['update'] = self.parse_data_by_action(update, Action.update)
+                self.action_list['update'] = self.parse_data_by_action_gen(update, Action.update)
 
             if delete:
-                self.action_list['delete'] = self.parse_data_by_action(delete, Action.delete)
+                self.action_list['delete'] = self.parse_data_by_action_gen(delete, Action.delete)
 
             # загрузка файлов пакетов из репозитория
             if any((install, update)):
@@ -113,6 +114,10 @@ class Manager(object):
             if not self.buffer_is_empty():
                 self.logger.info('перенос пакетов из буфера в папку установки')
                 self.install_packets()
+
+        except RepoIsBusy:
+            self.logger.error('Репозиторий заблокирован. Попробуйте позднее.')
+            return
 
         except DispatcherActivationError:
             self.logger.error('Ошибка соединения с репозиторием')
@@ -141,7 +146,8 @@ class Manager(object):
 
             # хэш
             with open(self.local_index_file_hash, 'w') as fp:
-                fp.write(to_json(self.remote_index_hash))
+                # fp.write(to_json(self.remote_index_hash))
+                fp.write(self.remote_index_hash)
 
             # очистка буфера
             self._clean_buffer()
@@ -149,38 +155,51 @@ class Manager(object):
         finally:
             self.deactivate()
 
-    def repo_busy_check(self):
-        if self.disp.repo_is_busy():
-            raise RepoIsBusy
+    def repo_is_busy(self) -> bool:
+        return self.disp.repo_is_busy()
 
     def repo_updated(self) -> bool:
         '''Проверка на наличие обновлений'''
-        self.repo_busy_check()
-        old_index_hash = self.get_local_index_hash()
         self.remote_index_hash = self.get_remote_index_hash()
-        return not old_index_hash == self.remote_index_hash
+        return not self.get_local_index_hash() == self.remote_index_hash
 
-    def buffer_is_empty(self):
+    def buffer_content_gen(self):
+        return (pack for pack in os.listdir(self.buffer) if os.path.isdir(os.path.join(self.buffer, pack)))
+
+    def buffer_count(self) -> int:
+        return len(list(self.buffer_content_gen()))
+
+    def buffer_is_empty(self) -> bool:
         try:
-            count = len(os.listdir(self.buffer))
+            count = self.buffer_count()
         except FileNotFoundError:
             return True
         else:
             return count == 0
 
     @property
-    def activated(self):
+    def activated(self) -> bool:
         return True if self.disp else False
 
     def activate(self):
         ''''''
         try:
             self.disp = get_dispatcher(self.repo, logger=self.logger, encode=self.encode)
-            self.action_list['install'] = ()
-            self.action_list['update'] = ()
-            self.action_list['delete'] = ()
         except Exception as err:
             raise DispatcherActivationError(err)
+
+        if self.repo_is_busy():
+            raise RepoIsBusy('Репозиторий заблокирован')
+
+        self.local_index = self.get_local_index() or {}
+        if self.repo_updated():
+            self.remote_index = self.get_remote_index() or {}
+        else:
+            self.remote_index = self.local_index
+
+        self.action_list['install'] = ()
+        self.action_list['update'] = ()
+        self.action_list['delete'] = ()
 
     def deactivate(self):
         self.disp = None
@@ -188,10 +207,21 @@ class Manager(object):
         self.local_index = None
         self.remote_index = None
 
-    def get_info(self):
-        pass
+    def get_info(self) -> dict:
+        try:
+            self.activate()
+            return dict(
+                version=__version__,
+                repo_packets_count=len(self.get_local_index().keys()),
+                installed_packets_count=len(self.get_installed_packets()),
+                last_update=os.path.getmtime(self.local_index_file),
+                repo_updated=self.repo_updated(),
+                buffer_count=self.buffer_count()
+                )
+        finally:
+            self.deactivate()
 
-    def get_installed_packets_list(self) -> tuple:
+    def get_installed_packets(self) -> tuple:
         '''Список активных подсистем
 
         Возвращает кортеж с подсистемами, найденными в папке установки на локальной машине.
@@ -204,7 +234,7 @@ class Manager(object):
         else:
             return tuple()
 
-    def get_selected_packets_list(self) -> tuple:
+    def get_selected_packets(self) -> tuple:
         try:
             with open(self.selected_packets_list_file) as fp:
                 return tuple(line.strip() for line in fp.readlines() if not any([line.startswith('#'), line.rstrip() == '']))
@@ -243,11 +273,14 @@ class Manager(object):
                 self.logger.info('{} - помечен как удаленный'.format(packet))
 
             # удаление ярлыка подсистемы
-            self.remove_shortcut(packet)
+            try:
+                self.remove_shortcut(packet)
+            except LinkUpdateError:
+                self.logger.debug('ошибка удаления ярлыка для {}'.format(packet))
 
-    def get_remote_index(self):
+    def get_remote_index(self) -> dict:
         if self.activated:
-            self.repo_busy_check()
+            self.repo_is_busy()
             try:
                 return self.disp.get_index_data()
             except FileNotFoundError:
@@ -256,24 +289,25 @@ class Manager(object):
         else:
             raise DispatcherNotActivated
 
-    def get_remote_index_hash(self):
+    def get_remote_index_hash(self) -> str:
         return self.disp.get_index_hash()
 
-    def get_local_index(self):
+    def get_local_index(self) -> dict:
         try:
             with open(self.local_index_file) as fp:
                 return from_json(fp.read())
         except FileNotFoundError:
             return {}
 
-    def get_local_index_hash(self):
+    def get_local_index_hash(self) -> str:
         try:
             with open(self.local_index_file_hash) as fp:
-                return from_json(fp.read())
+                # return from_json(fp.read())
+                return fp.read()
         except FileNotFoundError:
-            return None
+            return ''
 
-    def get_local_packet_status(self, packet_name):
+    def get_local_packet_status(self, packet_name) -> Status:
         fp = os.path.join(self.eiispath, packet_name)
         if os.path.exists(fp):
             return Status.installed
@@ -282,11 +316,11 @@ class Manager(object):
         else:
             return Status.purged
 
-    def local_packet_exists(self, packet_name):
+    def local_packet_exists(self, packet_name) -> bool:
         fp = os.path.join(self.eiispath, packet_name)
         return os.path.exists(fp)
 
-    def claim_packet(self, packet_name):
+    def claim_packet(self, packet_name) -> bool:
         status = self.get_local_packet_status(packet_name)
         if status == Status.removed:
             pack_new = os.path.join(self.eiispath, packet_name)
@@ -294,7 +328,7 @@ class Manager(object):
             shutil.move(pack_old, pack_new)
         return self.local_packet_exists(packet_name)
 
-    def parse_data_by_action(self, seq, action):
+    def parse_data_by_action_gen(self, seq, action):
         ''''''
         if action == Action.install:
             self.logger.info('Обработка пакетов на установку:')
@@ -422,8 +456,11 @@ class Manager(object):
                             shutil.copy2(s, d)
 
                 # создание ярлыка
-                title, exe_file_path = self._get_link_data(packet)
-                self.create_shortcut(title, exe_file_path)
+                if not NOLINKS:
+                    title, exe_file_path = self._get_link_data(packet)
+                    self.create_shortcut(title, exe_file_path)
+                else:
+                    self.logger.debug('не создан ярлык для пакета {}'.format(packet))
 
             except LinkUpdateError as err:
                 self.logger.debug('ошибка создания ярлыка для {}: {}'.format(packet, err))
@@ -435,7 +472,7 @@ class Manager(object):
                 self.logger.info('{} установлен'.format(packet))
 
     def update_links(self):
-        for packet in self.get_installed_packets_list():
+        for packet in self.get_installed_packets():
             try:
                 title, exe_file_path = self._get_link_data(packet)
                 self.create_shortcut(title, exe_file_path)
@@ -449,7 +486,7 @@ class Manager(object):
         :param
         """
         if NOLINKS:
-            raise LinkUpdateError('ошибка импорта библиотеки win32')
+            raise LinkUpdateError('Ошибка создания ярлыка - отсутствует библиотека win32')
 
         if not exe_file_path:
             raise LinkUpdateError('недостаточно данных для создания ярлыка для {}'.format(title))
@@ -467,6 +504,7 @@ class Manager(object):
 
     def remove_shortcut(self, packet):
         title, _ = self._get_link_data(packet)
+
         link_path = os.path.join(self.desktop, title + '.lnk')
         try:
             os.unlink(link_path)
@@ -482,8 +520,12 @@ class Manager(object):
         except FileNotFoundError:
             pass
 
-    def _get_link_data(self, packet):
-        title = self.remote_index[packet].get('title') or packet
+    def _get_link_data(self, packet) -> tuple:
+        try:
+            title = self.local_index[packet].get('title') or packet
+        except Exception:
+            title = packet
+
         binaries = glob.glob(r'{}\*.exe'.format(os.path.join(self.eiispath, packet)))
         count = len(binaries)
         if count > 1:

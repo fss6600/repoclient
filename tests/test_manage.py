@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import shutil
 import sys
 import unittest
 from collections import Counter
@@ -12,6 +13,12 @@ from eiisclient.core.utils import file_hash_calc, from_json, get_temp_dir, gzip_
 from tests.eiisrepo.eiisrepo import Manager as Repomanager
 from tests.utils import FILEFORDELETE, create_test_repo
 
+try:
+    import win32, winshell
+except ImportError:
+    NOLINKS = True
+else:
+    NOLINKS = False
 
 class Manage_1_TestCase(unittest.TestCase):
     @classmethod
@@ -67,8 +74,8 @@ class Manage_1_TestCase(unittest.TestCase):
 
         # пакеты еще не установлены
         self.assertFalse(self.manager.local_packet_exists('Ревизор'))
-        self.assertEqual(self.manager.get_installed_packets_list(), ())
-        self.assertEqual(self.manager.get_selected_packets_list(), ())
+        self.assertEqual(self.manager.get_installed_packets(), ())
+        self.assertEqual(self.manager.get_selected_packets(), ())
 
         # буфер еще не создан
         self.assertTrue(self.manager.buffer_is_empty())
@@ -97,6 +104,9 @@ class Manage_2_WorkTestCase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        # print('\n press any key')
+        # input()
+
         cls.workdir.cleanup()
         cls.repodir.cleanup()
         cls.eiispath.cleanup()
@@ -114,7 +124,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def test_eiisclient_first_start(self):
+    def test_1_eiisclient_first_start(self):
         # print(self.repodir.name)
         # print('\n press any key')
         #
@@ -148,13 +158,12 @@ class Manage_2_WorkTestCase(unittest.TestCase):
 
         res = self.manager.claim_packet(self.test_packet_name)  # пакет присутствует, все норм
         self.assertTrue(res)
-        os.removedirs(os.path.join(self.eiispath.name, self.test_packet_name))
+        shutil.rmtree(os.path.join(self.eiispath.name, test_packet_name))
 
         ###
         # repo is busy
         self.repomanager.fd.init()
-        with self.assertRaises(RepoIsBusy):
-            self.manager.repo_busy_check()
+        self.assertTrue(self.manager.repo_is_busy())
 
         self.repomanager.fd.clean()
         self.repomanager.index()
@@ -166,7 +175,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.assertIsNone(self.manager.remote_index)
         self.assertDictEqual(self.manager.action_list, {})
 
-    def test_manager_parse_data_by_action(self):
+    def test_2_manager_parse_data_by_action(self):
         self.manager.activate()
 
         # диспетчер активирован
@@ -179,7 +188,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.assertIn(self.test_packet_name, self.manager.remote_index.keys(), 'отсутствут пакет в индексе')
 
         # action.install
-        res = self.manager.parse_data_by_action(self.packets_list, Action.install)
+        res = self.manager.parse_data_by_action_gen(self.packets_list, Action.install)
         self.assertIsInstance(res, Iterator, 'должен быть генератор')
 
         res = list(res)
@@ -202,7 +211,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
             self.assertEqual(action, Action.install)
 
         # action.update - do nothing
-        res = self.manager.parse_data_by_action(self.packets_list, Action.update)
+        res = self.manager.parse_data_by_action_gen(self.packets_list, Action.update)
         self.assertIsInstance(res, Iterator, 'должен быть генератор')
 
         res = list(res)
@@ -219,7 +228,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.manager.remote_index[self.test_packet_name]['files'].pop('file_must_be_delete')  # для удаления локального файла
         self.manager.remote_index[self.test_packet_name]['files'].update({'new_file': '0000'})  # для установки локального файла
 
-        res = self.manager.parse_data_by_action(self.packets_list, Action.update)
+        res = self.manager.parse_data_by_action_gen(self.packets_list, Action.update)
         res = list(res)
 
         self.assertEqual(len(res), 4, 'должно быть равным 4')
@@ -244,12 +253,12 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.assertEqual(counter[Action.update], 2)
 
         # action.delete
-        res = self.manager.parse_data_by_action(self.packets_list, Action.delete)
+        res = self.manager.parse_data_by_action_gen(self.packets_list, Action.delete)
         res = list(res)
         self.assertEqual(len(res), 1)
         self.assertListEqual(res, self.packets_list)
 
-    def test_manager_get_task(self):
+    def test_3_manager_get_task(self):
         self.manager.activate()
 
         # диспетчер активирован
@@ -263,8 +272,8 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.manager.local_index[self.test_packet_name] = new_data  # данные для обновления
         self.manager.remote_index[self.test_packet_name]['files'].update({'new_file': '0000'})
 
-        self.manager.action_list['install'] = self.manager.parse_data_by_action(self.packets_list, Action.install)
-        self.manager.action_list['update'] = self.manager.parse_data_by_action(self.packets_list, Action.update)
+        self.manager.action_list['install'] = self.manager.parse_data_by_action_gen(self.packets_list, Action.install)
+        self.manager.action_list['update'] = self.manager.parse_data_by_action_gen(self.packets_list, Action.update)
 
         res = list(self.manager.get_task())
 
@@ -290,11 +299,11 @@ class Manage_2_WorkTestCase(unittest.TestCase):
             # else:
             #     self.assertFalse(True, 'неопределенное действие')
 
-    def test_get_installed_packets_list(self):
+    def test_4_get_installed_packets_list(self):
         ##  no eiispath
         dirname = os.path.join('C:\\', 'test_78540297589')
         self.manager.eiispath = dirname
-        res = self.manager.get_installed_packets_list()
+        res = self.manager.get_installed_packets()
 
         self.assertEqual(self.manager.eiispath, dirname)
         self.assertIsInstance(res, tuple)
@@ -308,7 +317,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.assertEqual(self.manager.eiispath, eiispath)
 
         # no eiis
-        res = self.manager.get_installed_packets_list()
+        res = self.manager.get_installed_packets()
         self.assertIsInstance(res, tuple)
         self.assertEqual(len(res), 0)
 
@@ -324,7 +333,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
 
 
         ##  3 eiis
-        res = self.manager.get_installed_packets_list()
+        res = self.manager.get_installed_packets()
         # print(res)
         # print(os.listdir(eiispath))
         # print(os.listdir(self.manager.eiispath))
@@ -333,9 +342,9 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         # self.assertIn('Форма 4', res)
         self.assertListEqual(list(res), list(installed))
 
-    def test_get_selected_packets_list(self):
+    def test_5_get_selected_packets_list(self):
         self.manager.selected_packets_list_file = os.path.join(self.tempdir.name, 'selected')
-        res = self.manager.get_selected_packets_list()
+        res = self.manager.get_selected_packets()
 
         # no file
         self.assertIsInstance(res, tuple)
@@ -349,21 +358,21 @@ class Manage_2_WorkTestCase(unittest.TestCase):
             fp.write('Ревизор\n')
             fp.write('# Форма 4\n')
 
-        res = self.manager.get_selected_packets_list()
+        res = self.manager.get_selected_packets()
         self.assertIsInstance(res, tuple)
         self.assertEqual(len(res), 2)
         self.assertIn('Бухгалтерия', res)
 
-    def test_delete_packets(self):
-        packs = ('Форма 16', 'Анкета страхователя', 'Делопроизводство', 'Ревизор2', 'Регистратор',
-                 'Реестр листков нетрудоспособности','Форма 4', 'Справочник ОКВЭД-ОКОНХ','Страховые случаи',
-                 'Профилактика')
-        packs_for_delete_1 = ['Форма 16', 'Анкета страхователя', 'Делопроизводство']
-        packs_for_delete_2 = ['Профилактика', 'Справочник ОКВЭД-ОКОНХ', 'Ревизор2']
+    def test_6_delete_packets(self):
+        packs = ('Форма 6', 'Анкета страхователя', 'Делопроизводство', 'Ревизор', 'Бухгалтерия',
+                 'Реестр листков нетрудоспособности', 'Форма 4', 'Справочник ОКВЭД-ОКОНХ', 'Страховые случаи',
+                 'Профилактика')  # 10
+        packs_for_delete_1 = ['Форма 6', 'Анкета страхователя', 'Делопроизводство']  # 3
+        packs_for_delete_2 = ['Профилактика', 'Справочник ОКВЭД-ОКОНХ', 'Ревизор']  # 3
 
         # make eiis packets
         for name in packs:
-            os.makedirs(os.path.join(self.eiispath.name, name))
+            os.makedirs(os.path.join(self.eiispath.name, name), exist_ok=True)
 
         self.manager.activate()
         self.manager.action_list['delete'] = iter(packs_for_delete_1)
@@ -385,7 +394,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         for name in packs_for_delete_2:
             self.assertNotIn(name, res)
 
-    def test_get_index(self):
+    def test_7_get_index(self):
         ## remote index
         with self.assertRaises(DispatcherNotActivated):
             self.manager.get_remote_index()
@@ -409,7 +418,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.assertIsInstance(res2, dict)
         self.assertIn('Бухгалтерия', res2.keys())
 
-    def test_install_packets(self):
+    def test_8_install_packets(self):
         installed = {
             'Бухгалтерия':
                 [('compkeep.exe', 2048),
@@ -449,7 +458,9 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.assertEqual(os.path.getsize(fn), 2048)
         self.assertIn(os.path.basename(somefile), os.listdir(self.manager.buffer))
         self.assertNotEqual(len(os.listdir(self.manager.buffer)), 0)
-        self.assertEqual(len(os.listdir(self.manager.buffer)), 4)
+        self.assertEqual(len(os.listdir(self.manager.buffer)), 3)
+        self.assertEqual(self.manager.buffer_count(), 2)
+        self.assertListEqual(sorted(self.manager.buffer_content_gen()), sorted(updated.keys()))
         # self.assertEqual(len(os.listdir(self.manager.eiispath)), 2)
         self.assertFalse(self.manager.buffer_is_empty())
 
@@ -465,7 +476,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.manager._clean_buffer()
         self.assertTrue(self.manager.buffer_is_empty())
 
-    def test_handle_files(self):
+    def test_9_handle_files(self):
         # подготовка файлов в репозитории
         self.manager = Manager(self.repodir.name, workdir=self.workdir.name, eiispath=self.eiispath.name,
                                logger=self.logger, threads=3)
@@ -499,6 +510,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
             ]
 
         self.manager.action_list['update'] = []
+
 
         self.assertTrue(self.manager.buffer_is_empty())
 
@@ -589,8 +601,8 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
 
         self.manager = Manager(self.repodir.name, workdir=self.workdir.name, eiispath=self.eiispath.name,
                                logger=self.logger)
-        self.installed = self.manager.get_installed_packets_list()
-        self.selected = self.manager.get_selected_packets_list()
+        self.installed = self.manager.get_installed_packets()
+        self.selected = self.manager.get_selected_packets()
 
     def tearDown(self):
         pass
@@ -599,7 +611,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         self.manager.start(self.installed, self.selected)
 
         self.assertTrue(self.manager.buffer_is_empty())
-        self.assertSequenceEqual(self.manager.get_installed_packets_list(), ())
+        self.assertSequenceEqual(self.manager.get_installed_packets(), ())
         local_index_data = self.manager.get_local_index()
         self.assertIn('Бухгалтерия', local_index_data.keys())
         hash_data = self.manager.get_local_index_hash()
@@ -616,7 +628,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         self.manager.start(installed, selected)
 
         self.assertTrue(self.manager.buffer_is_empty())
-        self.assertSequenceEqual(self.manager.get_installed_packets_list(), ('Бухгалтерия',))
+        self.assertSequenceEqual(self.manager.get_installed_packets(), ('Бухгалтерия',))
         self.assertNotEqual(len(self.manager.get_local_index()), 0)
         self.assertIn('Бухгалтерия', self.manager.get_local_index().keys())
         self.assertIsNotNone(self.manager.get_local_index_hash())
@@ -687,15 +699,15 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         path0 = os.path.join(self.eiispath.name, 'Бухгалтерия', 'compkeep.exe')
         with open(path0), self.assertLogs(__name__, logging.ERROR) as cm:
             self.manager.activate()
-            self.selected = self.manager.get_selected_packets_list()
+            self.selected = self.manager.get_selected_packets()
             self.manager.start(self.installed, self.selected)
         message = cm.output[0]
-        self.assertIn('Отказано в доступе', message)
+        self.assertIn('Ошибка удаления пакетов подсистем', message)
         self.assertIn('Бухгалтерия', os.listdir(self.eiispath.name))
 
         ## удаление (переименование пакета)
         self.manager.activate()
-        self.selected = self.manager.get_selected_packets_list()
+        self.selected = self.manager.get_selected_packets()
         self.manager.start(self.installed, self.selected)
 
         self.manager.activate()
@@ -712,7 +724,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
             fp.write('Бухгалтерия\n')
 
         self.manager.activate()
-        self.selected = self.manager.get_selected_packets_list()
+        self.selected = self.manager.get_selected_packets()
         self.manager.start(self.installed, self.selected)
 
         self.manager.activate()
@@ -721,7 +733,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         self.assertIn('Бухгалтерия', os.listdir(self.eiispath.name))
         self.manager.deactivate()
 
-    def test_5_start_purge_packet(self):
+    def test_6_start_purge_packet(self):
         selected = os.path.join(self.workdir.name, 'selected')
         self.assertTrue(os.path.exists(selected))
 
@@ -732,15 +744,15 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         path0 = os.path.join(self.eiispath.name, 'Бухгалтерия', 'compkeep.exe')
         with open(path0), self.assertLogs(__name__, logging.ERROR) as cm:
             self.manager.activate()
-            self.selected = self.manager.get_selected_packets_list()
+            self.selected = self.manager.get_selected_packets()
             self.manager.start(self.installed, self.selected)
         message = cm.output[0]
-        self.assertIn('Отказано в доступе', message)
+        self.assertIn('Ошибка удаления пакетов подсистем', message)
         self.assertIn('Бухгалтерия', os.listdir(self.eiispath.name))
 
         ## удаление
         self.manager.activate()
-        self.selected = self.manager.get_selected_packets_list()
+        self.selected = self.manager.get_selected_packets()
         self.manager.purge = True
         self.manager.start(self.installed, self.selected)
 
@@ -749,6 +761,19 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         self.assertNotIn('Бухгалтерия', os.listdir(self.eiispath.name))
         self.assertNotIn('Бухгалтерия.removed', os.listdir(self.eiispath.name))
         self.manager.deactivate()
+
+    @unittest.skipIf(NOLINKS, 'Отсутствуют библиотеки Win32 или winshell')
+    def test_7_start_shortcuts(self):
+        desktop = get_temp_dir(prefix='desktop_')
+        self.manager.activate()
+        self.manager.desktop = desktop.name
+
+        self.manager.update_links()
+
+        ##
+        desktop.cleanup()
+        self.manager.deactivate()
+
 
 
 if __name__ == '__main__':  # pragma: nocover
