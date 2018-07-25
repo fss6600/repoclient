@@ -8,10 +8,8 @@ import sys
 import threading
 import time
 import weakref
-
 try:
-    import winshell
-    from win32com.client import Dispatch
+    import winshell, win32con
 except ImportError:
     NOLINKS = True
 else:
@@ -21,7 +19,7 @@ from collections import Counter, namedtuple
 from enum import Enum
 from queue import Queue, Empty
 from collections.abc import Iterable
-from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR
+from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, SELECTEDFILENAME
 from eiisclient.core.dispatch import get_dispatcher
 from eiisclient.core.eiisreestr import REESTR
 from eiisclient.core.exceptions import (
@@ -43,11 +41,9 @@ class Status(Enum):
     installed, removed, purged = range(3)
 
 
-def get_null_logger() -> logging.Logger:
+def get_stdout_logger() -> logging.Logger:
     logger = logging.Logger(__name__)
-    # con_formatter = logging.Formatter('%(message)s')
-    con_handler = logging.StreamHandler(sys.stdout)
-    # con_handler.setFormatter(con_formatter)
+    con_handler = logging.StreamHandler(sys.stdout())
     logger.addHandler(con_handler)
     logger.setLevel(logging.INFO)
 
@@ -59,7 +55,7 @@ class Manager(object):
 
     def __init__(self, repo, workdir=None, eiispath=None, logger=None, encode=None, purge=False, threads=1, **kwargs):
         self.repo = repo
-        self.logger = logger or get_null_logger()
+        self.logger = logger or get_stdout_logger()
         self.workdir = workdir or WORKDIR
         self.eiispath = eiispath or DEFAULT_INSTALL_PATH
         self.tempdir = get_temp_dir(prefix='temp_')
@@ -70,7 +66,7 @@ class Manager(object):
         self.task_queue_k = kwargs.get('kqueue', 2)  # коэффициент размера основной очереди загрузки
         self.local_index_file = os.path.join(self.workdir, 'index.json')
         self.local_index_file_hash = os.path.join('{}.sha1'.format(self.local_index_file))
-        self.selected_packets_list_file = os.path.join(self.workdir, 'selected')
+        self.selected_packets_list_file = os.path.join(self.workdir, SELECTEDFILENAME)
         self.action_list = {}
         self.disp = None
         self.local_index = None
@@ -83,9 +79,10 @@ class Manager(object):
         ##
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir, exist_ok=True)
+        self._init_log()
 
     def __str__(self):
-        return '<Manager: {}'.format(id(self))
+        return '<Manager: {}>'.format(id(self))
 
     def start(self, installed: Iterable, selected: Iterable):
         ''''''
@@ -125,28 +122,28 @@ class Manager(object):
                 self.install_packets()
 
         except RepoIsBusy:
-            self.logger.error('Репозиторий заблокирован. Попробуйте позднее.')
-            return
+            raise RepoIsBusy('Репозиторий заблокирован. Попробуйте позднее.')
+            # return
 
         except DispatcherActivationError:
-            self.logger.error('Ошибка соединения с репозиторием')
-            return
+            raise DispatcherActivationError('Ошибка соединения с репозиторием')
+            # return
 
         except PacketInstallError:
-            self.logger.error('Ошибка установки пакетов подсистем')
-            return
+            raise PacketInstallError('Ошибка установки пакетов подсистем')
+            # return
 
         except PacketDeleteError:
-            self.logger.error('Ошибка удаления пакетов подсистем')
-            return
+            raise PacketDeleteError('Ошибка удаления пакетов подсистем')
+            # return
 
         except DownloadPacketError:
-            self.logger.error('Ошибка загрузки пакетов подсистем')
-            return
-
-        except Exception as err:
-            self.logger.error('Ошибка обновления пакетов подсистем: {}'.format(err))
-            return
+            raise DownloadPacketError('Ошибка загрузки пакетов подсистем')
+            # return
+        #
+        # except Exception as err:
+        #     self.logger.error('Ошибка обновления пакетов подсистем: {}'.format(err))
+        #     return
 
         else:
             # запись данных нового индекса
@@ -161,6 +158,9 @@ class Manager(object):
             # очистка буфера
             self._clean_buffer()
 
+            # обновление ярлыков на рабочем столе
+            self.update_links()
+
         finally:
             self.deactivate()
 
@@ -172,10 +172,10 @@ class Manager(object):
         self.remote_index_hash = self.get_remote_index_hash()
         return not self.get_local_index_hash() == self.remote_index_hash
 
-    def buffer_content_gen(self):
+    def buffer_content_gen(self) -> tuple:
         if not os.path.exists(self.buffer):
             return ()
-        return (pack for pack in os.listdir(self.buffer) if os.path.isdir(os.path.join(self.buffer, pack)))
+        return tuple(pack for pack in os.listdir(self.buffer) if os.path.isdir(os.path.join(self.buffer, pack)))
 
     def buffer_count(self) -> int:
         return len(list(self.buffer_content_gen()))
@@ -202,7 +202,7 @@ class Manager(object):
             raise DispatcherActivationError(err)
 
         if self.repo_is_busy():
-            raise RepoIsBusy('Репозиторий заблокирован')
+            raise RepoIsBusy
 
         self.local_index = self.get_local_index() or {}
         if self.repo_updated():
@@ -221,7 +221,6 @@ class Manager(object):
         self.remote_index = None
 
     def get_info(self) -> dict:
-
         try:
             self.activate()
             return {
@@ -231,16 +230,12 @@ class Manager(object):
                 'Последнее обновление': os.path.getmtime(self.local_index_file) if os.path.exists(
                     self.local_index_file) else None,
                 'Наличие обновлений': 'Да' if self.repo_updated() else 'Нет',
-                'Пакетов в буфере': self.buffer_count()
+                'Пакетов в буфере': self.buffer_count(),
+                'Путь: подсистемы': self.eiispath,
+                'Путь: репозиторий': self.repo,
                 }
         finally:
             self.deactivate()
-
-    def get_info_as_text(self):
-        info = self.get_info()
-        for key in sorted(info.keys()):
-            text = '{:25}{}'.format(key, info.get(key))
-            self.logger.info(text)
 
     def get_installed_packets(self) -> tuple:
         '''Список активных подсистем
@@ -297,7 +292,13 @@ class Manager(object):
             try:
                 self.remove_shortcut(packet)
             except LinkUpdateError:
-                self.logger.debug('ошибка удаления ярлыка для {}'.format(packet))
+                self.logger.error('ошибка удаления ярлыка для {}'.format(packet))
+
+    def clean_removed(self):
+        for packet in os.listdir(self.eiispath):
+            if packet.endswith('.removed'):
+                fp = os.path.join(self.eiispath, packet)
+                shutil.rmtree(fp)
 
     def get_remote_index(self) -> dict:
         if self.activated:
@@ -433,8 +434,8 @@ class Manager(object):
         exc_queue = Queue()
 
         for i in range(self.threads):
-            disp = get_dispatcher(self.repo, encode=self.encode)
-            worker = Worker(main_queue, exc_queue, disp)
+            disp = get_dispatcher(self.repo, encode=self.encode, logger=self.logger)
+            worker = Worker(main_queue, exc_queue, disp, logger=self.logger)
             worker.setName('{}'.format(worker))
             worker.setDaemon(True)
             worker.start()
@@ -506,22 +507,33 @@ class Manager(object):
 
         :param
         """
-        if NOLINKS:
-            raise LinkUpdateError('Ошибка создания ярлыка - отсутствует библиотека win32')
+        # if NOLINKS:
+        #     raise LinkUpdateError('Ошибка создания ярлыка - отсутствует библиотека win32')
 
         if not exe_file_path:
             raise LinkUpdateError('недостаточно данных для создания ярлыка для {}'.format(title))
 
         lnpath = os.path.join(self.desktop, title + '.lnk')
-        target = icon = exe_file_path
+        # target = icon = exe_file_path
         workdir = os.path.dirname(exe_file_path)
-        shell = Dispatch('WScript.Shell')
+        # shell = Dispatch('WScript.Shell')
 
-        shortcut = shell.CreateShortCut(lnpath)
-        shortcut.Targetpath = target
-        shortcut.WorkingDirectory = workdir
-        shortcut.IconLocation = icon
-        shortcut.save()
+        # shortcut = shell.CreateShortCut(lnpath)
+        # shortcut.Targetpath = target
+        # shortcut.WorkingDirectory = workdir
+        # shortcut.IconLocation = icon
+        # shortcut.save()
+
+        lnpath = os.path.join(winshell.desktop(), '{}.lnk'.format(title))
+
+        try:
+            with winshell.shortcut(lnpath) as lp:
+                lp.path = exe_file_path
+                lp.description = 'Зупуск подсистемы {} ЕИИС Соцстрах РФ'
+                lp.working_directory = workdir
+                lp.write()
+        except Exception as err:
+            raise LinkUpdateError('Ошибка создания ярлыка - отсутствует библиотека win32: {}'.format(err))
 
     def remove_shortcut(self, packet):
         title, _ = self._get_link_data(packet)
@@ -560,17 +572,28 @@ class Manager(object):
 
         return title, exe_file_path
 
+    def _init_log(self):
+        if self.logger.level == logging.DEBUG:
+            self.logger.debug('{}: repo: {}'.format(self, self.repo))
+            self.logger.debug('{}: eiis: {}'.format(self, self.eiispath))
+            self.logger.debug('{}: buffer: {}'.format(self, self.buffer))
+            self.logger.debug('{}: encode: {}'.format(self, self.encode))
+            self.logger.debug('{}: tempdir: {}'.format(self, self.tempdir.name))
+            self.logger.debug('{}: task_k: {}'.format(self, self.task_queue_k))
+            self.logger.debug('{}: purge: {}'.format(self, self.purge))
+
 
 class Worker(threading.Thread):
     files_faulted = Counter()
     max_repeat = 5
     stop_retrieve = threading.Event()
 
-    def __init__(self, queue, exc_queue, dispatcher, *args, **kwargs):
+    def __init__(self, queue, exc_queue, dispatcher, logger=None, *args, **kwargs):
         super(Worker, self).__init__(*args, **kwargs)
         self.queue = queue
         self.exceptions = exc_queue
         self.dispatcher = dispatcher
+        self.logger = logger or get_stdout_logger()
 
     def __repr__(self):
         return '<Worker-{}>'.format(id(self))
@@ -578,13 +601,16 @@ class Worker(threading.Thread):
     def run(self):
         while True:
             if self.stop_retrieve.is_set():
+                self.logger.debug('{}: обнаружен стоп-флаг. выходим'.format(self))
                 raise StopIteration
 
             if self.dispatcher.repo_is_busy():
+                self.logger.debug('{}: репозиторий заблокирован. установка стоп-флага'.format(self))
                 self.stop_retrieve.set()
                 raise StopIteration
 
             task = self.queue.get()
+            self.logger.debug('{}: получена задача ({}|{})'.format(self, task.packetname, task.action))
 
             if task.action == Action.delete:
                 self.remove_file(task.src)
@@ -595,13 +621,18 @@ class Worker(threading.Thread):
                 if not hash_sum == task.crc:
                     self.files_faulted[task.src] += 1
                     fault_count = self.files_faulted.get(task.src)
+                    self.logger.debug('{}: hash <{} != {}> [{}]'.format(self, hash_sum, task.crc, fault_count))
                     if fault_count is not None and fault_count > self.max_repeat:
                         self.exceptions.put('Ошибка загрузки файла "{}" из пакета "{}"'.format(os.path.basename(task.src),
                                                                                           task.packetname))
                     else:
                         self.queue.put(task)
                 else:
-                    self.dispatcher.move(fp, task.dst)
+                    try:
+                        self.dispatcher.move(fp, task.dst)
+                    except IOError:
+                        self.exceptions.put('Ошибка переноса в буфер файла "{}" из пакета "{}"'.format(
+                            os.path.basename(task.src), task.packetname))
 
             self.queue.task_done()
 
