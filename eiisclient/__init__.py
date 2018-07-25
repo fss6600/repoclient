@@ -11,5 +11,5 @@ __license__ = 'BSD'
 
 DEFAULT_ENCODING = 'utf-8'
 WORKDIRNAME = 'Обновление ЕИИС Соцстрах'
-WORKDIR = os.path.normpath(os.path.join(os.path.expandvars('%APPDATA%'), WORKDIRNAME))
+WORKDIR = os.path.join(os.path.expandvars('%APPDATA%'), WORKDIRNAME)
 DEFAULT_INSTALL_PATH = os.path.normpath(os.path.join(os.path.expandvars('%PROGRAMFILES%'), r'NIST\ЕИИС ФСС РФ'))

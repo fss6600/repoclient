@@ -572,6 +572,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         cls.workdir = get_temp_dir(prefix='workdir_')
         cls.repodir = get_temp_dir(prefix='repodir_')
         cls.eiispath = get_temp_dir(prefix='eiisdir_')
+        cls.desktop = get_temp_dir(prefix='desktop_')
 
         cls.logger = logging.getLogger(__name__)
         cls.logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -589,18 +590,20 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # print('\n press any key')
-        # input()
+        print('\n press any key')
+        input()
 
         cls.workdir.cleanup()
         cls.repodir.cleanup()
         cls.eiispath.cleanup()
+        cls.desktop.cleanup()
 
     def setUp(self):
         self.repomanager.index()
 
         self.manager = Manager(self.repodir.name, workdir=self.workdir.name, eiispath=self.eiispath.name,
                                logger=self.logger)
+        self.manager.desktop = self.desktop.name
         self.installed = self.manager.get_installed_packets()
         self.selected = self.manager.get_selected_packets()
 
@@ -764,14 +767,11 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
 
     @unittest.skipIf(NOLINKS, 'Отсутствуют библиотеки Win32 или winshell')
     def test_7_start_shortcuts(self):
-        desktop = get_temp_dir(prefix='desktop_')
         self.manager.activate()
-        self.manager.desktop = desktop.name
 
         self.manager.update_links()
 
         ##
-        desktop.cleanup()
         self.manager.deactivate()
 
 

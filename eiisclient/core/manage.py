@@ -45,7 +45,12 @@ class Status(Enum):
 
 def get_null_logger() -> logging.Logger:
     logger = logging.Logger(__name__)
-    logger.addHandler(logging.StreamHandler(stream=sys.stdout))
+    # con_formatter = logging.Formatter('%(message)s')
+    con_handler = logging.StreamHandler(sys.stdout)
+    # con_handler.setFormatter(con_formatter)
+    logger.addHandler(con_handler)
+    logger.setLevel(logging.INFO)
+
     return logger
 
 
@@ -74,6 +79,10 @@ class Manager(object):
         self.desktop = winshell.desktop() if not NOLINKS else \
             os.path.normpath(os.path.join(os.path.expandvars('%USERPROFILE%'), 'Desktop'))
         self.finalize = weakref.finalize(self, self._clean)
+
+        ##
+        if not os.path.exists(self.workdir):
+            os.makedirs(self.workdir, exist_ok=True)
 
     def __str__(self):
         return '<Manager: {}'.format(id(self))
@@ -164,6 +173,8 @@ class Manager(object):
         return not self.get_local_index_hash() == self.remote_index_hash
 
     def buffer_content_gen(self):
+        if not os.path.exists(self.buffer):
+            return ()
         return (pack for pack in os.listdir(self.buffer) if os.path.isdir(os.path.join(self.buffer, pack)))
 
     def buffer_count(self) -> int:
@@ -186,6 +197,8 @@ class Manager(object):
         try:
             self.disp = get_dispatcher(self.repo, logger=self.logger, encode=self.encode)
         except Exception as err:
+            self.logger.debug('repo: {}'.format(self.repo))
+            self.logger.debug('encode: {}'.format(self.encode))
             raise DispatcherActivationError(err)
 
         if self.repo_is_busy():
@@ -208,18 +221,26 @@ class Manager(object):
         self.remote_index = None
 
     def get_info(self) -> dict:
+
         try:
             self.activate()
-            return dict(
-                version=__version__,
-                repo_packets_count=len(self.get_local_index().keys()),
-                installed_packets_count=len(self.get_installed_packets()),
-                last_update=os.path.getmtime(self.local_index_file),
-                repo_updated=self.repo_updated(),
-                buffer_count=self.buffer_count()
-                )
+            return {
+                'Версия программы': __version__,
+                'Пакетов в репозитории': len(self.remote_index.keys()),
+                'Установлено подсистем': len(self.get_installed_packets()),
+                'Последнее обновление': os.path.getmtime(self.local_index_file) if os.path.exists(
+                    self.local_index_file) else None,
+                'Наличие обновлений': 'Да' if self.repo_updated() else 'Нет',
+                'Пакетов в буфере': self.buffer_count()
+                }
         finally:
             self.deactivate()
+
+    def get_info_as_text(self):
+        info = self.get_info()
+        for key in sorted(info.keys()):
+            text = '{:25}{}'.format(key, info.get(key))
+            self.logger.info(text)
 
     def get_installed_packets(self) -> tuple:
         '''Список активных подсистем
@@ -296,7 +317,7 @@ class Manager(object):
         try:
             with open(self.local_index_file) as fp:
                 return from_json(fp.read())
-        except FileNotFoundError:
+        except Exception:
             return {}
 
     def get_local_index_hash(self) -> str:

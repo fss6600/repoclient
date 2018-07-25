@@ -191,8 +191,8 @@ class FileDispatcher(BaseDispatcher):
 
 class SMBDispatcher(FileDispatcher):
     ''''''
-    def __new__(cls, *args, **kwargs):
-        raise NotImplementedError
+    # def __new__(cls, *args, **kwargs):
+    #     raise NotImplementedError
 
 
 class FTPDispatcher(BaseDispatcher):
@@ -307,13 +307,14 @@ class Dispatcher(object):
     """"""
 
     def __new__(cls, *args, **kwargs):
-        string = args[0]
+        string = args[0].strip('\'').strip('"')
 
         if re.match(r'[FfTtPp]+://\w+:\w+@.*', string):
             return FTPDispatcher(*args, **kwargs)
-        elif re.match(r'[A-Za-z]:\\\w+', string):
+        # elif re.match(r'[A-Za-z]:(\\\w+)+', string):  # todo - доработать выражение
+        elif re.match(r'[A-Za-z]:\\(((\w+)(\\?))+)?', string):
             return FileDispatcher(*args, **kwargs)
-        elif re.match(r'\\\\\w+(\\\w+)+', string):
+        elif re.match(r'\\\\\w+\\\w+((\\)?(\w+)(\\)?)+', string):
             return SMBDispatcher(*args, **kwargs)
         else:
             raise ValueError('Instance not match')
