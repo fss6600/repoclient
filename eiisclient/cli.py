@@ -9,10 +9,10 @@ from logging.handlers import RotatingFileHandler
 
 import wx
 
-from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, __version__
+from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, __version__, SELECTEDFILENAME, CONFIGFILENAME
 from eiisclient.core.exceptions import DispatcherActivationError, RepoIsBusy
 from eiisclient.core.manage import Manager
-from eiisclient.core.utils import get_config_data
+from eiisclient.core.utils import get_config_data, to_json
 from eiisclient.gui import GUI
 
 DESC = r"""
@@ -20,6 +20,7 @@ DESC = r"""
 команды (необязательно):
 init - создает или перезаписывает данные конфигурации, указанные в параметрах
 info - выводит информацию по установленным пакетам подсистем, дату последнего обновления
+clean - удаляет пакеты подсистем, помеченные как удаленные
 
 параметры:
 repopath - полный путь к репозиторию:
@@ -34,13 +35,13 @@ eiispath - полный путь для установки подсистем:
 ---------------------------------------------------"""
 
 USAGE = '%(prog)s [-h] [-d] [-l] [--version] [--nogui] [--purge] [--threads=N] ' \
-        '[--eiispath=EIISPATH] [--encode=ENCODE] --repo=REPO [command]'
+        '[--eiispath=EIISPATH] [--encode=ENCODE] --repopath=REPO [command]'
 
 
 def get_args():
     ''''''
     programname = 'eiiscli.exe'
-    commands = ('init', 'info')
+    commands = ('init', 'info', 'clean')
 
     parser = ArgumentParser(prog=programname,
                             formatter_class=RawDescriptionHelpFormatter,
@@ -60,7 +61,7 @@ def get_args():
                         default=None, help="количество потоков для загрузки")
     parser.add_argument("--eiispath", dest='eiispath', type=str,
                         default=None, help="полный путь установки подсистем")
-    parser.add_argument("--repo", dest='repo', type=str,
+    parser.add_argument("--repopath", dest='repopath', type=str,
                         default=None, help="полный путь к репозиторию")
     parser.add_argument("--encode", dest='encode', type=str,
                         default=None, help="кодировка вывода сообщений")
@@ -99,22 +100,27 @@ def main():  # pragma: no cover
         con_handler.setFormatter(con_formatter)
         logger.addHandler(con_handler)
 
+    ##
+
     config = get_config_data(WORKDIR)
-    repo = args.repo or config.get('repo', '')
+    repo = args.repopath or os.path.normpath(config.get('repopath', ''))
+
     if not repo:
         return 'Не указан репозиторий'
 
-    eiispath = args.eiispath or config.get('eiispath', DEFAULT_INSTALL_PATH)
+    eiis_path = args.eiispath or config.get('eiispath', DEFAULT_INSTALL_PATH)
     threads = args.threads or config.get('threads', 1)
     encode = args.encode or config.get('encode', DEFAULT_ENCODING)
     purge = args.purge or config.get('purge', False)
 
-    manager = Manager(repo, workdir=WORKDIR, logger=logger, eiispath=eiispath, encode=encode,
+    manager = Manager(repo, workdir=WORKDIR, logger=logger, eiispath=eiis_path, encode=encode,
                       threads=threads, purge=purge)
 
-    if args.command == 'info':  # todo
+    if args.command == 'info':
         try:
-            manager.get_info_as_text()
+            info = manager.get_info()
+            for key in sorted(info.keys()):
+                print('{:25}{}'.format(key, info.get(key)))
         except RepoIsBusy as err:
             logger.error(err)
         except DispatcherActivationError as err:
@@ -124,7 +130,35 @@ def main():  # pragma: no cover
         return
 
     if args.command == 'init':
-        raise NotImplementedError
+        if not os.path.exists(WORKDIR):
+            os.makedirs(WORKDIR, exist_ok=True)
+
+        confile = os.path.join(WORKDIR, CONFIGFILENAME)
+        confdata = {
+            'repopath': repo,
+            'eiispath': eiis_path,
+            'threads': threads,
+            'encode': encode,
+            'purge': purge,
+            }
+        with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
+            fp.write(to_json(confdata))
+
+        selected_file_name = os.path.join(WORKDIR, SELECTEDFILENAME)
+        if not os.path.exists(selected_file_name):
+            with open(selected_file_name, 'w', encoding=encode) as fp:
+                fp.write('# Данный файл используется только при работе из консоли\n')
+                fp.write('# Добавьте наименования пакетов для установки подсистемы по одному на строку\n\n')
+        return('Инициализация прошла успешно')
+
+    if args.command == 'clean':
+        try:
+            manager.clean_removed()
+        except Exception as err:
+            res = 'Ошибка при очистке "удаленных" пакетов: {}'.format(err)
+        else:
+            res = 'Успешно очищено от удаленных'
+        return res
 
     if args.nogui:
         installed = manager.get_installed_packets()
@@ -136,8 +170,8 @@ def main():  # pragma: no cover
             logger.error(err)
             return 2
         else:
-            manager.get_info_as_text()
-
+            # manager.get_info_as_text()
+            pass
     else:
         app = wx.App()
         GUI.MainFrame(manager=manager)
