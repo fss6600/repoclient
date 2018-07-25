@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 #
+import logging
 import os
 import re
 import shutil
@@ -21,8 +22,9 @@ class BaseDispatcher(object):
     def __init__(self, *args, **kwargs):
         self.logger = kwargs.get('logger')
         self.encode = kwargs.get('encode', DEFAULT_ENCODING)
-        self.tempdir = get_temp_dir()
+        self.tempdir = get_temp_dir(prefix='disp_')
         self.finalizer = weakref.finalize(self, self.close)
+        ##
 
     @property
     def repopath(self):
@@ -99,6 +101,10 @@ class BaseDispatcher(object):
     def get_index_data(self):
         pass
 
+    def _init_log(self):
+        self.logger.debug('{}: encode: {}'.format(self, self.encode))
+        self.logger.debug('{}: tmpdir: {}'.format(self, self.tempdir.name))
+
 
 class FileDispatcher(BaseDispatcher):
     ''''''
@@ -106,7 +112,9 @@ class FileDispatcher(BaseDispatcher):
         """"""
         super(FileDispatcher, self).__init__(*args, **kwargs)
         self.repo = repo
-        self.count_queue = kwargs.get('count_queue')
+        # self.count_queue = kwargs.get('count_queue')
+        if self.logger.level == logging.DEBUG:
+            self._init_log()
 
     @property
     def repopath(self):
@@ -142,9 +150,7 @@ class FileDispatcher(BaseDispatcher):
             dst = os.path.join(dst, fname)
 
         try:
-            shutil.copy2(src, dst)
-            # if self.count_queue:
-            #     self.count_queue.put(os.path.getsize(dst))
+            shutil.copyfile(src, dst)
         except IOError:
             raise  # todo добавить свое исключение или обработку, запись в лог
 
@@ -167,12 +173,32 @@ class FileDispatcher(BaseDispatcher):
                 yield fpath, rpath
 
     def move(self, src, dst):
-        try:
-            shutil.move(src, dst)
-        except FileNotFoundError:
-            dirname = os.path.dirname(dst)
+        # try:
+        #     shutil.move(src, dst)
+        # except FileNotFoundError:
+        #     dirname = os.path.dirname(dst)
+        #     os.makedirs(dirname, exist_ok=True)
+        #     shutil.move(src, dst)
+        dirname = os.path.dirname(dst)
+        if not os.path.exists(dirname):
             os.makedirs(dirname, exist_ok=True)
-            shutil.move(src, dst)
+
+        try:
+            shutil.copyfile(src, dst)
+        except (PermissionError) as err:
+            #  err to log
+            import stat
+            if not os.access(dst, os.W_OK):
+                os.chmod(dst, stat.S_IWUSR)
+                # time.sleep(0.2)
+            os.unlink(dst)
+            # time.sleep(0.3)
+            shutil.copyfile(src, dst)
+
+        except Exception:
+            raise IOError
+        else:
+            os.unlink(src)
 
     def get_index_hash(self):
         index_hash_file_path = os.path.join(self.repopath, self.index_hash_file_name)
@@ -186,7 +212,9 @@ class FileDispatcher(BaseDispatcher):
         index_file_path = os.path.join(self.repopath, self.index_file_name)
         return from_json(gzip_read(index_file_path, encode=self.encode))
 
-
+    def _init_log(self):
+        super(FileDispatcher, self)._init_log()
+        self.logger.debug('{}: repo: {}'.format(self, self.repo))
 
 
 class SMBDispatcher(FileDispatcher):
