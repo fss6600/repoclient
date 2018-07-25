@@ -3,9 +3,9 @@ import os
 import wx
 
 from eiisclient.gui import main
-from eiisclient import __version__, __author__, __email__, __division__
+from eiisclient import __version__, __author__, __email__, __division__, CONFIGFILENAME
 from eiisclient import DEFAULT_ENCODING, WORKDIR, DEFAULT_INSTALL_PATH
-from eiisclient.core.utils import to_json, from_json
+from eiisclient.core.utils import to_json, from_json, get_config_data
 from eiisclient.core.manage import Manager
 
 
@@ -37,11 +37,12 @@ class ConfigFrame(main.fmConfig):
     def Apply( self, event ):
         self.config['repopath'] = self.wxRepoPath.GetValue()
         self.config['eiispath'] = self.wxEiisInstallPath.GetPath()
-        self.config['threads_count'] = int(self.wxThreadsCount.Selection) + 1
-        self.config['purge_packets'] = self.wxPurgePackets.GetValue()
+        self.config['threads'] = int(self.wxThreadsCount.Selection) + 1
+        self.config['purge'] = self.wxPurgePackets.GetValue()
 
         #  write to file
-        with open(CONFIGFILE, 'w', encoding=DEFAULT_ENCODING) as fp:
+        confile = os.path.join(WORKDIR, CONFIGFILENAME)
+        with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
             fp.write(to_json(self.config))
         if self.main_frame is not None:
             self.main_frame.log_append('from config')
@@ -126,7 +127,7 @@ class MainFrame(main.fmMain):
         self.wxGauge.Value = 0
 
     def _init_config(self):
-        config = get_config_data()
+        config = get_config_data(WORKDIR)
         self.repopath = config.get('repopath')
         self.eiispath = config.get('repopath') or DEFAULT_INSTALL_PATH
 
@@ -136,10 +137,10 @@ class MainFrame(main.fmMain):
 
     def update_packet_list(self):
         ''''''
-        active_list = self.get_active_packet_list()
+        # active_list = self.get_active_packet_list()
         index = self.manager.local_index.keys()
 
-        # active_list = ['Форма 4', 'Форма 6', 'Справочник чего-то там', 'Распределение льготников']
+        active_list = ['Форма 4', 'Форма 6', 'Справочник чего-то там', 'Распределение льготников']
         # index = ['Форма 4', 'Бухгалтерия', 'Ревизор']
         index = []
 
