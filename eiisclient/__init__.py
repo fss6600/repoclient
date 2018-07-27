@@ -9,7 +9,7 @@ __division__ = 'филиал №2 ГУ СРО ФСС РФ'
 __version__ = '0.1.4'
 __license__ = 'BSD'
 
-DEFAULT_ENCODING = 'utf-8'
+DEFAULT_ENCODING = 'CP1251'
 WORKDIRNAME = 'Обновление ЕИИС Соцстрах'
 CONFIGFILENAME = 'config.json'
 SELECTEDFILENAME = 'selected.txt'

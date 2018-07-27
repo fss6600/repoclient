@@ -2,32 +2,35 @@
 
 
 class RepoIsBusy(Exception):
-    def __repr__(self):
+    def __str__(self):
         return 'Репозиторий заблокирован для обновлеия. Попробуйте позднее'
 
 
 class DispatcherNotActivated(Exception):
-    def __repr__(self):
+    def __str__(self):
         return 'Диспетчер не активирован'
 
 
 class DispatcherActivationError(Exception):
-    def __repr__(self):
+    def __str__(self):
         return 'Ошибка активации диспетчера'
 
 
 class PacketInstallError(Exception):
-    def __repr__(self):
-        return 'Ошибка установки пакета'
+    def __str__(self):
+        return 'Ошибка при установке пакетов'
 
 
 class PacketDeleteError(Exception):
-    pass
+    def __str__(self):
+        return 'Ошибка при удалении пакетов'
 
 
 class DownloadPacketError(Exception):
-    pass
+    def __str__(self):
+        return 'Ошибка при загрузке пакетов подсистем'
 
 
 class LinkUpdateError(Exception):
-    pass
+    def __str__(self):
+        return 'Ошибка при удалении ярлыков'

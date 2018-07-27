@@ -2,6 +2,7 @@ import gzip
 import hashlib
 import json
 import os
+import warnings
 from tempfile import TemporaryDirectory
 from eiisclient import DEFAULT_ENCODING
 
@@ -61,6 +62,9 @@ def hash_calc(data):  # pragma: no cover
 
 
 def get_config_data(workdir, encode=DEFAULT_ENCODING):
+    if not os.path.exists(workdir):
+        print('Не обнаружена рабочая директория. Возможно программа не проинициализирована')
+
     cfile = os.path.join(workdir, 'config.json')
     try:
         with open(cfile, encoding=encode) as fp:

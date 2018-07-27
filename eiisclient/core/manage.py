@@ -56,9 +56,9 @@ class Manager(object):
     def __init__(self, repo, workdir=None, eiispath=None, logger=None, encode=None, purge=False, threads=1, **kwargs):
         self.repo = repo
         self.logger = logger or get_stdout_logger()
-        self.workdir = workdir or WORKDIR
+        self.workdir = workdir or WORKDIR  #????
         self.eiispath = eiispath or DEFAULT_INSTALL_PATH
-        self.tempdir = get_temp_dir(prefix='temp_')
+        self.tempdir = get_temp_dir(prefix='eiis_man_tmp_')
         self.buffer = os.path.join(self.workdir, 'buffer')
         self.encode = encode or DEFAULT_ENCODING
         self.purge = purge
@@ -76,12 +76,10 @@ class Manager(object):
             os.path.normpath(os.path.join(os.path.expandvars('%USERPROFILE%'), 'Desktop'))
         self.finalize = weakref.finalize(self, self._clean)
 
-        ##
-        if not os.path.exists(self.workdir):
-            os.makedirs(self.workdir, exist_ok=True)
-        self._init_log()
+        if self.logger.level == logging.DEBUG:
+            self._init_log()
 
-    def __str__(self):
+    def __repr__(self):
         return '<Manager: {}>'.format(id(self))
 
     def start(self, installed: Iterable, selected: Iterable):
@@ -91,13 +89,6 @@ class Manager(object):
 
         try:
             self.activate()
-
-            # self.local_index = self.get_local_index() or {}
-            #
-            # if self.repo_updated():
-            #     self.remote_index = self.get_remote_index()
-            # else:
-            #     self.remote_index = self.local_index
 
             if install:
                 self.action_list['install'] = self.parse_data_by_action_gen(install, Action.install)
@@ -121,39 +112,13 @@ class Manager(object):
                 self.logger.info('перенос пакетов из буфера в папку установки')
                 self.install_packets()
 
-        except RepoIsBusy:
-            raise RepoIsBusy('Репозиторий заблокирован. Попробуйте позднее.')
-            # return
+            # запись данных нового индекса и контрольной суммы
+            if not os.path.exists(self.workdir):
+                os.makedirs(self.workdir, exist_ok=True)
 
-        except DispatcherActivationError:
-            raise DispatcherActivationError('Ошибка соединения с репозиторием')
-            # return
-
-        except PacketInstallError:
-            raise PacketInstallError('Ошибка установки пакетов подсистем')
-            # return
-
-        except PacketDeleteError:
-            raise PacketDeleteError('Ошибка удаления пакетов подсистем')
-            # return
-
-        except DownloadPacketError:
-            raise DownloadPacketError('Ошибка загрузки пакетов подсистем')
-            # return
-        #
-        # except Exception as err:
-        #     self.logger.error('Ошибка обновления пакетов подсистем: {}'.format(err))
-        #     return
-
-        else:
-            # запись данных нового индекса
-            with open(self.local_index_file, 'w') as fp:
-                fp.write(to_json(self.remote_index))
-
-            # хэш
-            with open(self.local_index_file_hash, 'w') as fp:
-                # fp.write(to_json(self.remote_index_hash))
-                fp.write(self.remote_index_hash)
+            with open(self.local_index_file, 'w') as fp_index, open(self.local_index_file_hash, 'w') as fp_hash:
+                fp_index.write(to_json(self.remote_index))
+                fp_hash.write(self.remote_index_hash)
 
             # очистка буфера
             self._clean_buffer()
@@ -164,8 +129,9 @@ class Manager(object):
         finally:
             self.deactivate()
 
-    def repo_is_busy(self) -> bool:
-        return self.disp.repo_is_busy()
+    def check_repo(self):
+        if self.disp.repo_is_busy():
+            raise RepoIsBusy
 
     def repo_updated(self) -> bool:
         '''Проверка на наличие обновлений'''
@@ -195,16 +161,15 @@ class Manager(object):
     def activate(self):
         ''''''
         try:
-            self.disp = get_dispatcher(self.repo, logger=self.logger, encode=self.encode)
+            self.disp = get_dispatcher(self.repo, logger=self.logger, encode=self.encode, tempdir=self.tempdir)
         except Exception as err:
             self.logger.debug('repo: {}'.format(self.repo))
             self.logger.debug('encode: {}'.format(self.encode))
             raise DispatcherActivationError(err)
 
-        if self.repo_is_busy():
-            raise RepoIsBusy
+        self.check_repo()
 
-        self.local_index = self.get_local_index() or {}
+        self.local_index = self.get_local_index()
         if self.repo_updated():
             self.remote_index = self.get_remote_index() or {}
         else:
@@ -301,8 +266,9 @@ class Manager(object):
                 shutil.rmtree(fp)
 
     def get_remote_index(self) -> dict:
+        self.check_repo()
+
         if self.activated:
-            self.repo_is_busy()
             try:
                 return self.disp.get_index_data()
             except FileNotFoundError:
@@ -360,8 +326,11 @@ class Manager(object):
                 for file in files:
                     if packet_is_present:
                         fp = os.path.join(self.eiispath, packet, file)
-                        if file_hash_calc(fp) == files[file]:
+                        if os.path.exists(fp) and file_hash_calc(fp) == files[file]:
                             continue
+                    fp = os.path.join(self.buffer, packet, file)
+                    if os.path.exists(fp) and file_hash_calc(fp) == files[file]:
+                        continue
 
                     packname = packet
                     action = Action.install
@@ -430,12 +399,13 @@ class Manager(object):
         '''Получить новые файлы из репозитория или удалить локально старые'''
         error = False
 
-        main_queue = Queue(maxsize=self.threads * self.task_queue_k)
+        main_queue = Queue()  # todo: пересмотреть работу с асинхронной очередью, ввиду блокировки из-за ожидания
+        # main_queue = Queue(maxsize=self.threads * self.task_queue_k)
         exc_queue = Queue()
 
         for i in range(self.threads):
-            disp = get_dispatcher(self.repo, encode=self.encode, logger=self.logger)
-            worker = Worker(main_queue, exc_queue, disp, logger=self.logger)
+            dispatcher = get_dispatcher(self.repo, encode=self.encode, logger=self.logger, tempdir=self.tempdir)
+            worker = Worker(main_queue, exc_queue, dispatcher, logger=self.logger)
             worker.setName('{}'.format(worker))
             worker.setDaemon(True)
             worker.start()
@@ -472,26 +442,26 @@ class Manager(object):
                         s = os.path.join(top, file)
                         d = os.path.join(self.eiispath, os.path.relpath(s, self.buffer))
                         try:
-                            shutil.copy2(s, d)
+                            shutil.copyfile(s, d)
                         except FileNotFoundError:  # нет директории на месте назначения
                             os.makedirs(os.path.dirname(d), exist_ok=True)
-                            shutil.copy2(s, d)
+                            shutil.copyfile(s, d)
 
                 # создание ярлыка
-                if not NOLINKS:
+                if NOLINKS:
+                    self.logger.debug('не создан ярлык для пакета {}'.format(packet))
+                else:
                     title, exe_file_path = self._get_link_data(packet)
                     self.create_shortcut(title, exe_file_path)
-                else:
-                    self.logger.debug('не создан ярлык для пакета {}'.format(packet))
 
             except LinkUpdateError as err:
                 self.logger.debug('ошибка создания ярлыка для {}: {}'.format(packet, err))
 
             except Exception as err:
-                self.logger.error('ошибка установки пакета {}'.format(packet))
+                self.logger.error('Ошибка установки пакета {}'.format(packet))
                 raise PacketInstallError(err)
             else:
-                self.logger.info('{} установлен'.format(packet))
+                self.logger.info('Обработка пакета {} завершена'.format(packet))
 
     def update_links(self):
         for packet in self.get_installed_packets():
@@ -573,14 +543,13 @@ class Manager(object):
         return title, exe_file_path
 
     def _init_log(self):
-        if self.logger.level == logging.DEBUG:
-            self.logger.debug('{}: repo: {}'.format(self, self.repo))
-            self.logger.debug('{}: eiis: {}'.format(self, self.eiispath))
-            self.logger.debug('{}: buffer: {}'.format(self, self.buffer))
-            self.logger.debug('{}: encode: {}'.format(self, self.encode))
-            self.logger.debug('{}: tempdir: {}'.format(self, self.tempdir.name))
-            self.logger.debug('{}: task_k: {}'.format(self, self.task_queue_k))
-            self.logger.debug('{}: purge: {}'.format(self, self.purge))
+        self.logger.debug('{}: repo: {}'.format(self, self.repo))
+        self.logger.debug('{}: eiis: {}'.format(self, self.eiispath))
+        self.logger.debug('{}: buffer: {}'.format(self, self.buffer))
+        self.logger.debug('{}: encode: {}'.format(self, self.encode))
+        self.logger.debug('{}: tempdir: {}'.format(self, self.tempdir.name))
+        self.logger.debug('{}: task_k: {}'.format(self, self.task_queue_k))
+        self.logger.debug('{}: purge: {}'.format(self, self.purge))
 
 
 class Worker(threading.Thread):
@@ -610,7 +579,8 @@ class Worker(threading.Thread):
                 raise StopIteration
 
             task = self.queue.get()
-            self.logger.debug('{}: получена задача ({}|{})'.format(self, task.packetname, task.action))
+            task_id = id(task)
+            self.logger.debug('{}<task-{}> ({}|{}|{})'.format(self, task_id, task.packetname, task.action, task.src))
 
             if task.action == Action.delete:
                 self.remove_file(task.src)
@@ -621,15 +591,17 @@ class Worker(threading.Thread):
                 if not hash_sum == task.crc:
                     self.files_faulted[task.src] += 1
                     fault_count = self.files_faulted.get(task.src)
-                    self.logger.debug('{}: hash <{} != {}> [{}]'.format(self, hash_sum, task.crc, fault_count))
-                    if fault_count is not None and fault_count > self.max_repeat:
-                        self.exceptions.put('Ошибка загрузки файла "{}" из пакета "{}"'.format(os.path.basename(task.src),
-                                                                                          task.packetname))
+                    self.logger.debug('{}<task-{}> <{} != {}> [{}]'.format(self, task_id, hash_sum, task.crc, fault_count))
+                    if fault_count is not None and fault_count > self.max_repeat - 1:
+                        self.exceptions.put('Неверная контрольная сумма файла "{}" из пакета "{}"'.format(
+                            os.path.basename(task.src), task.packetname))
                     else:
+# fixme: при установленном максимальном размере, вставка в очередь блокирует процесс. перерсмотреть на возможность асинхронной работы
                         self.queue.put(task)
                 else:
                     try:
                         self.dispatcher.move(fp, task.dst)
+                        self.logger.debug('{}<task-{}> move {} -> {}'.format(self, task_id, fp, task.dst ))
                     except IOError:
                         self.exceptions.put('Ошибка переноса в буфер файла "{}" из пакета "{}"'.format(
                             os.path.basename(task.src), task.packetname))

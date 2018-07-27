@@ -3,20 +3,7 @@ eiisclient
 ==========
 
 
-.. image:: https://img.shields.io/pypi/v/eiisclient.svg
-        :target: https://pypi.python.org/pypi/eiisclient
-
-.. image:: https://img.shields.io/travis//eiisclient.svg
-        :target: https://travis-ci.org//eiisclient
-
-.. image:: https://readthedocs.org/projects/eiisclient/badge/?version=latest
-        :target: https://eiisclient.readthedocs.io/en/latest/?badge=latest
-        :alt: Documentation Status
-
-
-
-
-РћР±РЅРѕРІР»РµРЅРёРµ РїРѕРґСЃРёСЃС‚РµРј Р•РРРЎ РЎРѕС†СЃС‚СЂР°С…
+Обновление подсистем ЕИИС Соцстрах
 
 
 * Free software: BSD license

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """Main module."""
+import datetime
 import logging
 import os
 import sys
@@ -103,9 +104,9 @@ def main():  # pragma: no cover
     ##
 
     config = get_config_data(WORKDIR)
-    repo = args.repopath or os.path.normpath(config.get('repopath', ''))
+    repopath = args.repopath or config.get('repopath', None)
 
-    if not repo:
+    if not repopath:
         return 'Не указан репозиторий'
 
     eiis_path = args.eiispath or config.get('eiispath', DEFAULT_INSTALL_PATH)
@@ -113,7 +114,29 @@ def main():  # pragma: no cover
     encode = args.encode or config.get('encode', DEFAULT_ENCODING)
     purge = args.purge or config.get('purge', False)
 
-    manager = Manager(repo, workdir=WORKDIR, logger=logger, eiispath=eiis_path, encode=encode,
+    if args.command == 'init':
+        if not os.path.exists(WORKDIR):
+            os.makedirs(WORKDIR, exist_ok=True)
+
+        confile = os.path.join(WORKDIR, CONFIGFILENAME)
+        confdata = {
+            'repopath': repopath,
+            'eiispath': eiis_path,
+            'threads': threads,
+            'encode': encode,
+            'purge': purge,
+            }
+        with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
+            fp.write(to_json(confdata))
+
+        selected_file_name = os.path.join(WORKDIR, SELECTEDFILENAME)
+        if not os.path.exists(selected_file_name):
+            with open(selected_file_name, 'wb') as fp:
+                fp.write('# Данный файл используется только при работе из консоли\n'.encode(encode))
+                fp.write('# Добавьте наименования пакетов для установки подсистемы по одному на строку\n\n'.encode(encode))
+        return ('Инициализация прошла успешно')
+
+    manager = Manager(repopath, workdir=WORKDIR, logger=logger, eiispath=eiis_path, encode=encode,
                       threads=threads, purge=purge)
 
     if args.command == 'info':
@@ -129,28 +152,6 @@ def main():  # pragma: no cover
             logger.error('Ошибка: {}'.format(err))
         return
 
-    if args.command == 'init':
-        if not os.path.exists(WORKDIR):
-            os.makedirs(WORKDIR, exist_ok=True)
-
-        confile = os.path.join(WORKDIR, CONFIGFILENAME)
-        confdata = {
-            'repopath': repo,
-            'eiispath': eiis_path,
-            'threads': threads,
-            'encode': encode,
-            'purge': purge,
-            }
-        with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
-            fp.write(to_json(confdata))
-
-        selected_file_name = os.path.join(WORKDIR, SELECTEDFILENAME)
-        if not os.path.exists(selected_file_name):
-            with open(selected_file_name, 'w', encoding=encode) as fp:
-                fp.write('# Данный файл используется только при работе из консоли\n')
-                fp.write('# Добавьте наименования пакетов для установки подсистемы по одному на строку\n\n')
-        return('Инициализация прошла успешно')
-
     if args.command == 'clean':
         try:
             manager.clean_removed()
@@ -164,14 +165,19 @@ def main():  # pragma: no cover
         installed = manager.get_installed_packets()
         selected = manager.get_selected_packets()
 
+        begin_time = datetime.datetime.utcnow()
         try:
             manager.start(installed, selected)
         except Exception as err:
             logger.error(err)
             return 2
         else:
-            # manager.get_info_as_text()
             pass
+        finally:
+            end_time = datetime.datetime.utcnow()
+            during_time = end_time - begin_time
+            logger.info('Завершено за {}'.format(during_time))
+
     else:
         app = wx.App()
         GUI.MainFrame(manager=manager)

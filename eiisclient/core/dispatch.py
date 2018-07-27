@@ -22,16 +22,11 @@ class BaseDispatcher(object):
     def __init__(self, *args, **kwargs):
         self.logger = kwargs.get('logger')
         self.encode = kwargs.get('encode', DEFAULT_ENCODING)
-        self.tempdir = get_temp_dir(prefix='disp_')
-        self.finalizer = weakref.finalize(self, self.close)
-        ##
+        self.tempdir = kwargs.get('tempdir', None) or get_temp_dir(prefix='disp_')
 
     @property
     def repopath(self):
         return None
-
-    def close(self):
-        self.tempdir.cleanup()
 
     def _clean_dir(self, dirpath, onerror=False):
         for fp, _ in self.walk_dir(dirpath):
@@ -112,7 +107,6 @@ class FileDispatcher(BaseDispatcher):
         """"""
         super(FileDispatcher, self).__init__(*args, **kwargs)
         self.repo = repo
-        # self.count_queue = kwargs.get('count_queue')
         if self.logger.level == logging.DEBUG:
             self._init_log()
 
@@ -121,10 +115,7 @@ class FileDispatcher(BaseDispatcher):
         return self.repo
 
     def __repr__(self):
-        return 'File Dispatcher <id:{}> on <{}>'.format(id(self), self.repo)
-
-    def __str__(self):
-        return 'File Dispatcher <id:{}>'.format(id(self))
+        return '<File Dispatcher-{}>'.format(id(self))
 
     def remove(self, fpath, onerror=False):
         """Удаление локального файла"""
@@ -185,18 +176,18 @@ class FileDispatcher(BaseDispatcher):
 
         try:
             shutil.copyfile(src, dst)
-        except (PermissionError) as err:
+        except PermissionError:
             #  err to log
-            import stat
-            if not os.access(dst, os.W_OK):
-                os.chmod(dst, stat.S_IWUSR)
-                # time.sleep(0.2)
-            os.unlink(dst)
-            # time.sleep(0.3)
-            shutil.copyfile(src, dst)
-
-        except Exception:
-            raise IOError
+            try:
+                import stat
+                if not os.access(dst, os.W_OK):
+                    os.chmod(dst, stat.S_IWUSR)
+                    # time.sleep(0.2)
+                os.unlink(dst)
+                time.sleep(0.2)
+                shutil.copyfile(src, dst)
+            except Exception:
+                raise IOError
         else:
             os.unlink(src)
 
@@ -219,8 +210,8 @@ class FileDispatcher(BaseDispatcher):
 
 class SMBDispatcher(FileDispatcher):
     ''''''
-    # def __new__(cls, *args, **kwargs):
-    #     raise NotImplementedError
+    def __repr__(self):
+        return '<SMB Dispatcher-{}>'.format(id(self))
 
 
 class FTPDispatcher(BaseDispatcher):
@@ -335,17 +326,16 @@ class Dispatcher(object):
     """"""
 
     def __new__(cls, *args, **kwargs):
-        string = args[0].strip('\'').strip('"')
+        value = args[0].strip('\'').strip('"')
 
-        if re.match(r'[FfTtPp]+://\w+:\w+@.*', string):
+        if re.match(r'[FfTtPp]+://\w+:\w+@.*', value):
             return FTPDispatcher(*args, **kwargs)
-        # elif re.match(r'[A-Za-z]:(\\\w+)+', string):  # todo - доработать выражение
-        elif re.match(r'[A-Za-z]:\\(((\w+)(\\?))+)?', string):
+        elif re.match(r'[A-Za-z]:\\(((\w+)(\\?))+)?', value):
             return FileDispatcher(*args, **kwargs)
-        elif re.match(r'\\\\\w+\\\w+((\\)?(\w+)(\\)?)+', string):
+        elif re.match(r'\\\\\w+\\\w+((\\)?(\w+)(\\)?)+', value):
             return SMBDispatcher(*args, **kwargs)
         else:
-            raise ValueError('Instance not match')
+            raise ValueError('Не определен тип репозитория: <{}>'.format(value))
 
 
 def get_dispatcher(repo, *args, **kwargs):
