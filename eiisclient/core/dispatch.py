@@ -11,7 +11,7 @@ import weakref
 from eiisclient import DEFAULT_ENCODING
 from eiisclient.core.utils import from_json, get_temp_dir, gzip_read
 
-BUSYMESSAGE = '__UPDATE_IN_PROCESS__'
+BUSYMESSAGE = '__REGLAMENT__'
 
 
 class BaseDispatcher(object):
