@@ -24,7 +24,7 @@ from eiisclient.core.dispatch import get_dispatcher
 from eiisclient.core.eiisreestr import REESTR
 from eiisclient.core.exceptions import (
     RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, PacketInstallError, DownloadPacketError,
-    PacketDeleteError, LinkUpdateError)
+    PacketDeleteError, LinkUpdateError, NoUpdates)
 from eiisclient.core.utils import get_temp_dir, file_hash_calc, from_json, to_json
 from eiisclient import __version__
 
@@ -70,6 +70,7 @@ class Manager(object):
         self.action_list = {}
         self.disp = None
         self.local_index = None
+        self.local_index_hash = None
         self.remote_index = None
         self.remote_index_hash = None
         self.desktop = winshell.desktop() if not NOLINKS else \
@@ -90,26 +91,26 @@ class Manager(object):
         try:
             self.activate()
 
-            if install:
-                self.action_list['install'] = self.parse_data_by_action_gen(install, Action.install)
+            # проверка на наличие обновлений
+            if not install and not delete and not self.repo_updated():
+                raise NoUpdates
 
-            if update and self.repo_updated():
-                self.action_list['update'] = self.parse_data_by_action_gen(update, Action.update)
-
-            if delete:
-                self.action_list['delete'] = self.parse_data_by_action_gen(delete, Action.delete)
+            self.action_list['install'] = self.parse_data_by_action_gen(install, Action.install)
+            self.action_list['update'] = self.parse_data_by_action_gen(update, Action.update)
+            self.action_list['delete'] = self.parse_data_by_action_gen(delete, Action.delete)
 
             # загрузка файлов пакетов из репозитория
-            if any((install, update)):
-                self.handle_files()
+            self.handle_files()
 
             # деактивация пакетов, помеченных на удаление
-            if delete:
-                self.delete_packets()
+            # if delete:
+            self.delete_packets()
 
             # перемещение скачанных пакетов из буфера в папку установки
-            if not self.buffer_is_empty():
-                self.logger.info('перенос пакетов из буфера в папку установки')
+            if self.buffer_is_empty():
+                self.logger.info('Нет пакетов для установки или обновления')
+            else:
+                self.logger.info('Перенос пакетов из буфера в папку установки:')
                 self.install_packets()
 
             # запись данных нового индекса и контрольной суммы
@@ -135,16 +136,19 @@ class Manager(object):
 
     def repo_updated(self) -> bool:
         '''Проверка на наличие обновлений'''
-        self.remote_index_hash = self.get_remote_index_hash()
-        return not self.get_local_index_hash() == self.remote_index_hash
+        if self.remote_index_hash is None:
+            self.remote_index_hash = self.get_remote_index_hash()
+        if self.local_index_hash is None:
+            self.local_index_hash = self.get_local_index_hash()
+        return not self.local_index_hash == self.remote_index_hash
 
-    def buffer_content_gen(self) -> tuple:
+    def buffer_content(self) -> tuple:
         if not os.path.exists(self.buffer):
             return ()
         return tuple(pack for pack in os.listdir(self.buffer) if os.path.isdir(os.path.join(self.buffer, pack)))
 
     def buffer_count(self) -> int:
-        return len(list(self.buffer_content_gen()))
+        return len(list(self.buffer_content()))
 
     def buffer_is_empty(self) -> bool:
         try:
@@ -170,6 +174,7 @@ class Manager(object):
         self.check_repo()
 
         self.local_index = self.get_local_index()
+
         if self.repo_updated():
             self.remote_index = self.get_remote_index() or {}
         else:
@@ -183,7 +188,9 @@ class Manager(object):
         self.disp = None
         self.action_list = {}
         self.local_index = None
+        self.local_index_hash = None
         self.remote_index = None
+        self.remote_index_hash = None
 
     def get_info(self) -> dict:
         try:
@@ -238,17 +245,16 @@ class Manager(object):
                 try:
                     shutil.rmtree(pack_path)
                 except Exception as err:
-                    self.logger.error('ошибка удаления пакета {}: {}'.format(packet, err))
-                    self.logger.error('пакет {} будет помечен как удаленный')
+                    self.logger.error('- ошибка удаления пакета {}: {}'.format(packet, err))
                 else:
-                    self.logger.info('{} - удален с диска'.format(packet))
+                    self.logger.info('{} - удален'.format(packet))
                     continue
 
             try:
                 new_pack_path = '{}.removed'.format(pack_path)
                 os.rename(pack_path, new_pack_path)
             except Exception as err:
-                self.logger.debug('ошибка удаления пакета {}: {}'.format(packet, err))
+                self.logger.debug('- ошибка удаления пакета {}: {}'.format(packet, err))
                 raise PacketDeleteError
             else:
                 self.logger.info('{} - помечен как удаленный'.format(packet))
@@ -319,7 +325,7 @@ class Manager(object):
     def parse_data_by_action_gen(self, seq, action):
         ''''''
         if action == Action.install:
-            self.logger.info('Обработка пакетов на установку:')
+            self.logger.info('Обработка данных на установку пакетов')
             for packet in seq:
                 packet_is_present = self.claim_packet(packet)
                 files = self.remote_index[packet]['files']
@@ -340,6 +346,7 @@ class Manager(object):
                     yield packname, action, src, crc
 
         elif action == Action.update:
+            self.logger.info('Обработка данных на обновление пакетов')
             for packet in seq:
                 if self.local_index[packet]['phash'] == self.remote_index[packet]['phash']:
                     continue
@@ -368,6 +375,7 @@ class Manager(object):
                                 yield packet, act, file, remote_files[file]
 
         elif action == Action.delete:
+            self.logger.info('Обработка данных на удаление пакетов')
             for packet in seq:
                 # yield packet, Action.delete, None, None
                 yield packet
@@ -380,7 +388,12 @@ class Manager(object):
         for key in ('install', 'update'):
             source_data = self.action_list[key]
 
+            done = Counter()
             for packname, action, src, crc in source_data:
+                if packname not in done.keys():
+                    self.logger.info('- {}'.format(packname))
+                done[packname] += 1
+
                 task = namedtuple('Task', ('packetname', 'action', 'src', 'dst', 'crc'))
 
                 task.packetname = packname
@@ -430,11 +443,8 @@ class Manager(object):
 
     def install_packets(self):
         '''Копирование пакетов из буфера в папку установки'''
-        for packet in os.listdir(self.buffer):
+        for packet in self.buffer_content():
             src = os.path.join(self.buffer, packet)
-
-            if not os.path.isdir(src):
-                continue
 
             try:
                 for top, _, files in os.walk(src, topdown=False):
@@ -443,7 +453,7 @@ class Manager(object):
                         d = os.path.join(self.eiispath, os.path.relpath(s, self.buffer))
                         try:
                             shutil.copyfile(s, d)
-                        except FileNotFoundError:  # нет директории на месте назначения
+                        except FileNotFoundError:  # нет директории в месте назначения
                             os.makedirs(os.path.dirname(d), exist_ok=True)
                             shutil.copyfile(s, d)
 
@@ -461,7 +471,7 @@ class Manager(object):
                 self.logger.error('Ошибка установки пакета {}'.format(packet))
                 raise PacketInstallError(err)
             else:
-                self.logger.info('Обработка пакета {} завершена'.format(packet))
+                self.logger.info(' - {} обработан'.format(packet))
 
     def update_links(self):
         for packet in self.get_installed_packets():
@@ -554,7 +564,7 @@ class Manager(object):
 
 class Worker(threading.Thread):
     files_faulted = Counter()
-    max_repeat = 5
+    max_repeat = 3
     stop_retrieve = threading.Event()
 
     def __init__(self, queue, exc_queue, dispatcher, logger=None, *args, **kwargs):
