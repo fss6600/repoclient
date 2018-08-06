@@ -460,7 +460,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.assertNotEqual(len(os.listdir(self.manager.buffer)), 0)
         self.assertEqual(len(os.listdir(self.manager.buffer)), 3)
         self.assertEqual(self.manager.buffer_count(), 2)
-        self.assertListEqual(sorted(self.manager.buffer_content_gen()), sorted(updated.keys()))
+        self.assertListEqual(sorted(self.manager.buffer_content()), sorted(updated.keys()))
         # self.assertEqual(len(os.listdir(self.manager.eiispath)), 2)
         self.assertFalse(self.manager.buffer_is_empty())
 
