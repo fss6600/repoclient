@@ -6,6 +6,11 @@ class RepoIsBusy(Exception):
         return 'Репозиторий заблокирован для обновлеия. Попробуйте позднее'
 
 
+class NoUpdates(Exception):
+    def __str__(self):
+        return 'Обновлений нет'
+
+
 class DispatcherNotActivated(Exception):
     def __str__(self):
         return 'Диспетчер не активирован'
