@@ -11,7 +11,7 @@ from logging.handlers import RotatingFileHandler
 import wx
 
 from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, __version__, SELECTEDFILENAME, CONFIGFILENAME
-from eiisclient.core.exceptions import DispatcherActivationError, RepoIsBusy
+from eiisclient.core.exceptions import DispatcherActivationError, RepoIsBusy, NoUpdates
 from eiisclient.core.manage import Manager
 from eiisclient.core.utils import get_config_data, to_json
 from eiisclient.gui import GUI
@@ -168,15 +168,19 @@ def main():  # pragma: no cover
         begin_time = datetime.datetime.utcnow()
         try:
             manager.start(installed, selected)
+        except NoUpdates as err:
+            logger.info(err)
+            return
         except Exception as err:
             logger.error(err)
+            raise
             return 2
         else:
             pass
         finally:
             end_time = datetime.datetime.utcnow()
             during_time = end_time - begin_time
-            logger.info('Завершено за {}'.format(during_time))
+            logger.debug('Завершено за {}'.format(during_time))
 
     else:
         app = wx.App()
