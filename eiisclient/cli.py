@@ -66,6 +66,8 @@ def get_args():
                         default=None, help="полный путь к репозиторию")
     parser.add_argument("--encode", dest='encode', type=str,
                         default=None, help="кодировка вывода сообщений")
+    parser.add_argument("--ftpencode", dest='ftpencode', type=str,
+                        default=None, help="кодировка ftp сервера")
     parser.add_argument("--version", action='version', version='{}: {}'.format(programname, __version__),
                         help="версия программы")
 
@@ -112,6 +114,7 @@ def main():  # pragma: no cover
     eiis_path = args.eiispath or config.get('eiispath', DEFAULT_INSTALL_PATH)
     threads = args.threads or config.get('threads', 1)
     encode = args.encode or config.get('encode', DEFAULT_ENCODING)
+    ftpencode = args.ftpencode or config.get('ftpencode', encode)
     purge = args.purge or config.get('purge', False)
 
     if args.command == 'init':
@@ -125,6 +128,7 @@ def main():  # pragma: no cover
             'threads': threads,
             'encode': encode,
             'purge': purge,
+            'ftpencode': ftpencode
             }
         with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
             fp.write(to_json(confdata))
@@ -137,7 +141,7 @@ def main():  # pragma: no cover
         return ('Инициализация прошла успешно')
 
     manager = Manager(repopath, workdir=WORKDIR, logger=logger, eiispath=eiis_path, encode=encode,
-                      threads=threads, purge=purge)
+                      ftpencode=ftpencode, threads=threads, purge=purge)
 
     if args.command == 'info':
         try:

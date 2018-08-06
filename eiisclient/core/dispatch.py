@@ -20,13 +20,14 @@ class BaseDispatcher(object):
     index_hash_file_name = 'Index.gz.sha1'
 
     def __init__(self, *args, **kwargs):
+        self.repo = None
         self.logger = kwargs.get('logger')
         self.encode = kwargs.get('encode', DEFAULT_ENCODING)
         self.tempdir = kwargs.get('tempdir', None) or get_temp_dir(prefix='disp_')
 
     @property
     def repopath(self):
-        return None
+        return self.repo
 
     def _clean_dir(self, dirpath, onerror=False):
         for fp, _ in self.walk_dir(dirpath):
@@ -54,20 +55,57 @@ class BaseDispatcher(object):
         raise NotImplementedError
 
     def move(self, src, dst):
-        '''Перемещение локального файла'''
-        raise NotImplementedError
+        # try:
+        #     shutil.move(src, dst)
+        # except FileNotFoundError:
+        #     dirname = os.path.dirname(dst)
+        #     os.makedirs(dirname, exist_ok=True)
+        #     shutil.move(src, dst)
+        dirname = os.path.dirname(dst)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname, exist_ok=True)
 
-    def remove(self, fpath):
-        '''Удаление локального файла'''
-        raise NotImplementedError
+        try:
+            shutil.copyfile(src, dst)
+        except PermissionError:
+            #  err to log
+            try:
+                import stat
+                if not os.access(dst, os.W_OK):
+                    os.chmod(dst, stat.S_IWUSR)
+                    # time.sleep(0.2)
+                os.unlink(dst)
+                time.sleep(0.2)
+                shutil.copyfile(src, dst)
+            except Exception:
+                raise IOError
+        else:
+            os.unlink(src)
+
+    def remove(self, fpath, onerror=False):
+        """Удаление локального файла"""
+        try:
+            os.unlink(fpath)
+        except FileNotFoundError:
+            pass
+        except Exception as err:
+            self.logger.error('** ошибка удаления файла "{}"'.format(fpath))
+            self.logger.debug(err)
+            if onerror:
+                raise
 
     def walk_dir(self, dirpath):
+        """ Генератор списка файлов в указанной папке
+
+            Возвращает:
+            fpath: список полных путей файлов
+            rpath: относительных путей файлов
         """
-        Генератор списка файлов в указанной папке
-        :param dirpath:
-        :return:
-        """
-        raise NotImplementedError
+        for (root, _, filenames) in os.walk(dirpath):
+            for fname in filenames:
+                fpath = os.path.join(root, fname)
+                rpath = os.path.relpath(fpath, dirpath)
+                yield fpath, rpath
 
     def remove_dir(self, path):
         """"""
@@ -99,6 +137,7 @@ class BaseDispatcher(object):
     def _init_log(self):
         self.logger.debug('{}: encode: {}'.format(self, self.encode))
         self.logger.debug('{}: tmpdir: {}'.format(self, self.tempdir.name))
+        self.logger.debug('{}: repo: {}'.format(self, self.repo))
 
 
 class FileDispatcher(BaseDispatcher):
@@ -110,24 +149,8 @@ class FileDispatcher(BaseDispatcher):
         if self.logger.level == logging.DEBUG:
             self._init_log()
 
-    @property
-    def repopath(self):
-        return self.repo
-
     def __repr__(self):
         return '<File Dispatcher-{}>'.format(id(self))
-
-    def remove(self, fpath, onerror=False):
-        """Удаление локального файла"""
-        try:
-            os.unlink(fpath)
-        except FileNotFoundError:
-            pass
-        except Exception as err:
-            self.logger.error('** ошибка удаления файла "{}"'.format(fpath))
-            self.logger.debug(err)
-            if onerror:
-                raise
 
     def get_file(self, src, dst=None):
         """
@@ -150,47 +173,6 @@ class FileDispatcher(BaseDispatcher):
     def repo_is_busy(self):
         return BUSYMESSAGE in os.listdir(self.repo)
 
-    def walk_dir(self, dirpath):
-        """ Генератор списка файлов в указанной папке
-
-            Возвращает:
-            fpath: список полных путей файлов
-            rpath: относительных путей файлов
-        """
-        for (root, _, filenames) in os.walk(dirpath):
-            for fname in filenames:
-                fpath = os.path.join(root, fname)
-                rpath = os.path.relpath(fpath, dirpath)
-                yield fpath, rpath
-
-    def move(self, src, dst):
-        # try:
-        #     shutil.move(src, dst)
-        # except FileNotFoundError:
-        #     dirname = os.path.dirname(dst)
-        #     os.makedirs(dirname, exist_ok=True)
-        #     shutil.move(src, dst)
-        dirname = os.path.dirname(dst)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname, exist_ok=True)
-
-        try:
-            shutil.copyfile(src, dst)
-        except PermissionError:
-            #  err to log
-            try:
-                import stat
-                if not os.access(dst, os.W_OK):
-                    os.chmod(dst, stat.S_IWUSR)
-                    # time.sleep(0.2)
-                os.unlink(dst)
-                time.sleep(0.2)
-                shutil.copyfile(src, dst)
-            except Exception:
-                raise IOError
-        else:
-            os.unlink(src)
-
     def get_index_hash(self):
         index_hash_file_path = os.path.join(self.repopath, self.index_hash_file_name)
         try:
@@ -203,10 +185,6 @@ class FileDispatcher(BaseDispatcher):
         index_file_path = os.path.join(self.repopath, self.index_file_name)
         return from_json(gzip_read(index_file_path, encode=self.encode))
 
-    def _init_log(self):
-        super(FileDispatcher, self)._init_log()
-        self.logger.debug('{}: repo: {}'.format(self, self.repo))
-
 
 class SMBDispatcher(FileDispatcher):
     ''''''
@@ -216,39 +194,31 @@ class SMBDispatcher(FileDispatcher):
 
 class FTPDispatcher(BaseDispatcher):
     """FTP диспетчер"""
-    def __new__(cls, *args, **kwargs):
-        raise NotImplementedError
+    def __init__(self, repo, *args, **kwargs):
+        super(FTPDispatcher, self).__init__(*args, **kwargs)
 
-    def __init__(self, repo, encode=DEFAULT_ENCODING, ftpencode=DEFAULT_ENCODING):
-        super(FTPDispatcher, self).__init__(None, encode)
-        ftpcon = self._get_url_data(repo)
-        self.hostname = ftpcon.get('host')
-        self.username = ftpcon.get('user')
-        self.password = ftpcon.get('pass')
-        self.repo = ftpcon.get('path')
-        self.ftpencode = ftpencode
-        del ftpcon
-        self.ftp = self.ftp_init()
+        self.ftpencode = kwargs.get('ftpencode', self.encode)
+        self.hostname = None
+        self.username = None
+        self.password = None
+        self.repo = None
+        self._parse_url_data(repo)
+        self.ftp = self._ftp_init()
+        self._finalizer = weakref.finalize(self, self._close)
 
     def __repr__(self):
         return 'FTP Dispatcher  <{}> on <{}{}>'.format(id(self), self.hostname, self.repo)
 
-    @property
-    def repopath(self):
-        return self.repo
-
-    def _get_url_data(self, repo_string):
+    def _parse_url_data(self, repo_string):
         """"""
         from urllib.parse import urlparse
         data = urlparse(repo_string)
-        return {
-            'host': data.hostname,
-            'user': data.username,
-            'pass': data.password,
-            'path': data.path or '/'
-            }
+        self.hostname = data.hostname
+        self.username = data.username
+        self.password = data.password
+        self.repo = data.path or '/'
 
-    def ftp_init(self):
+    def _ftp_init(self):
         from ftplib import FTP
         ftp = FTP()
         ftp.encoding = self.ftpencode
@@ -260,17 +230,45 @@ class FTPDispatcher(BaseDispatcher):
 
         return ftp
 
+    def _check_connection(self):
+        from ftplib import error_temp
+        try:
+            self.ftp.sendcmd('TYPE I')
+        except error_temp as err:
+            if err and err.args[0].startswith('421'):
+                self.ftp = self._ftp_init()
+            else:
+                raise err  # todo: add exception
+
+    def _sanitize_path(self, path):
+        """ Заменяет \ на / в пути """
+        return '{}'.format(path).replace('\\', '/')
+
+    def _close(self):
+        self.tempdir.cleanup()
+
+        if self.ftp is not None:
+            try:
+                self.ftp.quit()
+            except Exception:
+                pass
+            self._finalizer.detach()
+
     def get_file(self, src, dst=None):
         """"""
         fname = os.path.basename(src)
 
         if dst is None:
-            dst = os.path.join(self.tempdir.name, fname)
-        elif not dst.endswith(fname):
-            dst = os.path.join(dst, fname)
+            dst_path = os.path.join(self.tempdir.name, fname)
+        elif not dst.endswith(fname):  # если указана папка
+            dst_path = os.path.join(dst, fname)
+        else:
+            dst_path = dst
 
         src_path = self._sanitize_path(os.path.join(self.repo, src))
-        dst_path = os.path.join(dst, fname)
+        # dst_path = os.path.join(dst, fname)
+
+        self._check_connection()
 
         with open(dst_path, 'wb') as fp:
             try:
@@ -280,46 +278,23 @@ class FTPDispatcher(BaseDispatcher):
 
         return dst_path
 
-    def _sanitize_path(self, path):
-        """ Заменяет \ на / в пути """
-        return '{}'.format(path).replace('\\', '/')
-
-    def close(self):
-        self.tempdir.cleanup()
-
-        if self.ftp is not None:
-            try:
-                self.ftp.quit()
-            except Exception:
-                pass
-            self.finalizer.detach()
-
-    # def check(self):
-    #     from ftplib import error_temp
-    #     try:
-    #         self.ftp.sendcmd('TYPE I')
-    #     except error_temp as err:
-    #         if err and err.args[0].startswith('421'):
-    #             self.close()
-    #             self.init()
-    #         else:
-    #             raise err
-
     def repo_is_busy(self):
         """Проверка на блокировку репозитория"""
         return BUSYMESSAGE in (fname for fname, _ in self.ftp.mlsd(self.repo))
 
-    # def stat(self, fpath):
-    #     """
-    #
-    #     :param fpath:
-    #     :return:
-    #     """
-    #     rdir, rfile = os.path.split(fpath)
-    #
-    #     for fname, fstatdata in self.ftp.mlsd(rdir):
-    #         if fname == rfile:
-    #             return {'size': fstatdata['size'], 'mtime': fstatdata['modify']}
+    def get_index_hash(self):
+        index_hash_file_path = os.path.join(self.repopath, self.index_hash_file_name)
+        fp = self.get_file(index_hash_file_path)
+        try:
+            with open(fp) as fp:
+                return fp.read()
+        except FileNotFoundError:
+            return ''
+
+    def get_index_data(self):
+        index_file_path = os.path.join(self.repopath, self.index_file_name)
+        fp = self.get_file(index_file_path)
+        return from_json(gzip_read(fp, encode=self.encode))
 
 
 class Dispatcher(object):
@@ -328,7 +303,7 @@ class Dispatcher(object):
     def __new__(cls, *args, **kwargs):
         value = args[0].strip('\'').strip('"')
 
-        if re.match(r'[FfTtPp]+://\w+:\w+@.*', value):
+        if re.match(r'[Ff][Tt][Pp]://(\w+:\w+@)?.*', value):
             return FTPDispatcher(*args, **kwargs)
         elif re.match(r'[A-Za-z]:\\(((\w+)(\\?))+)?', value):
             return FileDispatcher(*args, **kwargs)

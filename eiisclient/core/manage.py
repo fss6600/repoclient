@@ -61,6 +61,7 @@ class Manager(object):
         self.tempdir = get_temp_dir(prefix='eiis_man_tmp_')
         self.buffer = os.path.join(self.workdir, 'buffer')
         self.encode = encode or DEFAULT_ENCODING
+        self.ftpencode = kwargs.get('ftpencode', encode)
         self.purge = purge
         self.threads = threads
         self.task_queue_k = kwargs.get('kqueue', 2)  # коэффициент размера основной очереди загрузки
@@ -165,7 +166,8 @@ class Manager(object):
     def activate(self):
         ''''''
         try:
-            self.disp = get_dispatcher(self.repo, logger=self.logger, encode=self.encode, tempdir=self.tempdir)
+            self.disp = get_dispatcher(self.repo, logger=self.logger, encode=self.encode,
+                                       ftpencode=self.ftpencode, tempdir=self.tempdir)
         except Exception as err:
             self.logger.debug('repo: {}'.format(self.repo))
             self.logger.debug('encode: {}'.format(self.encode))
@@ -272,7 +274,7 @@ class Manager(object):
                 shutil.rmtree(fp)
 
     def get_remote_index(self) -> dict:
-        self.check_repo()
+        self.check_repo() # ???
 
         if self.activated:
             try:
@@ -417,7 +419,8 @@ class Manager(object):
         exc_queue = Queue()
 
         for i in range(self.threads):
-            dispatcher = get_dispatcher(self.repo, encode=self.encode, logger=self.logger, tempdir=self.tempdir)
+            dispatcher = get_dispatcher(self.repo, encode=self.encode, ftpencode=self.ftpencode,
+                         logger=self.logger, tempdir=self.tempdir)
             worker = Worker(main_queue, exc_queue, dispatcher, logger=self.logger)
             worker.setName('{}'.format(worker))
             worker.setDaemon(True)
@@ -606,7 +609,7 @@ class Worker(threading.Thread):
                         self.exceptions.put('Неверная контрольная сумма файла "{}" из пакета "{}"'.format(
                             os.path.basename(task.src), task.packetname))
                     else:
-# fixme: при установленном максимальном размере, вставка в очередь блокирует процесс. перерсмотреть на возможность асинхронной работы
+                        # fixme: при установленном максимальном размере, вставка в очередь блокирует процесс. перерсмотреть на возможность асинхронной работы
                         self.queue.put(task)
                 else:
                     try:
