@@ -77,10 +77,34 @@ class MainFrame(main.fmMain):
     def on_update( self, event ):
         thread = threading.Thread(target=self.run)
         thread.setDaemon(True)
+        thread.setName('Manager')
         thread.start()
 
     def on_refresh( self, event ):
         self.update_packet_list()
+
+    def on_btFull( self, event ):
+        if self.btFull.IsChecked():
+            self.manager.set_full(True)
+        else:
+            self.manager.set_full(False)
+
+    def on_purge( self, event ):
+        dlg = wx.MessageDialog(None, 'Вы уверены?',
+                               'Очистка удаленных пакетов', wx.YES_NO | wx.ICON_QUESTION)
+        ans = dlg.ShowModal()
+        if ans == wx.ID_YES:
+            self.logger.debug('Очистка от пакетов, помеченных как удаленные')
+            try:
+
+                self.manager.clean_removed()
+            except PacketDeleteError as err:
+                self.logger.error('Ошибка при очистке удаленных пакетов: {}'.format(err))
+            else:
+                self.logger.info('Очистка завершена')
+
+    def on_links_update( self, event ):
+        self.manager.update_links()
 
     def run(self):
         installed = self.manager.get_installed_packets()
@@ -93,24 +117,30 @@ class MainFrame(main.fmMain):
         self.menuService.Enable(id=self.menuConfig.GetId(), enable=False)
         self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=False)
         self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=False)
+        self.menuService.Enable(id=self.btFull.GetId(), enable=False)
 
         try:
             self.manager.activate()
+            self.log_append('Начинаем...\n')
             self.manager.start(installed, selected)
         except Exception as err:
             self.logger.error(err)
 
         finally:
             self.manager.deactivate()
-            self.manager.set_full(False)
-            
+
             self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=True)
             self.menuService.Enable(id=self.menuConfig.GetId(), enable=True)
             self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=True)
             self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=True)
+            self.menuService.Enable(id=self.btFull.GetId(), enable=True)
             self.wxPacketList.Enable()
             self.btUpdate.Enable()
             self.btRefresh.Enable()
+            self.btFull.Check(False)
+            self.on_btFull(None)
+
+            self.log_append('Закончили...\n')
 
     def init(self, full=False):
         """"""
@@ -144,7 +174,6 @@ class MainFrame(main.fmMain):
         self.update_info_view()
 
     def log_append(self, data):
-        # self.wxLogView.SetScrollPos()
         self.wxLogView.AppendText(data)
 
     def update_packet_list(self):

@@ -23,7 +23,7 @@ from enum import Enum
 from queue import Queue, Empty
 from collections.abc import Iterable
 from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, SELECTEDFILENAME
-from eiisclient.core.dispatch import get_dispatcher
+from eiisclient.core.dispatch import get_dispatcher, BaseDispatcher
 from eiisclient.core.eiisreestr import REESTR
 from eiisclient.core.exceptions import (
     RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, PacketInstallError, DownloadPacketError,
@@ -120,12 +120,12 @@ class Manager(object):
             self.action_list['update'] = self.parse_data_by_action_gen(update, Action.update)
             self.action_list['delete'] = self.parse_data_by_action_gen(delete, Action.delete)
 
-            # загрузка файлов пакетов из репозитория
-            self.handle_files()
-
             # деактивация пакетов, помеченных на удаление
             # if delete:
             self.delete_packets()
+
+            # загрузка файлов пакетов из репозитория
+            self.handle_files()
 
             # перемещение скачанных пакетов из буфера в папку установки
             if self.buffer_is_empty():
@@ -295,9 +295,12 @@ class Manager(object):
 
     def clean_removed(self):
         for packet in os.listdir(self.eiispath):
-            if packet.endswith('.removed'):
-                fp = os.path.join(self.eiispath, packet)
-                shutil.rmtree(fp)
+            try:
+                if packet.endswith('.removed'):
+                    fp = os.path.join(self.eiispath, packet)
+                    shutil.rmtree(fp)
+            except Exception as err:
+                raise PacketDeleteError(err)
 
     def get_remote_index(self) -> dict:
         self.check_repo() # ???
@@ -416,11 +419,11 @@ class Manager(object):
         for key in ('install', 'update'):
             source_data = self.action_list[key]
 
-            done = Counter()
+            # done = Counter()
             for packname, action, src, crc in source_data:
-                if packname not in done.keys():
-                    self.logger.info('- {}'.format(packname))
-                done[packname] += 1
+                # if packname not in done.keys():
+                #     self.logger.info('- {}'.format(packname))
+                # done[packname] += 1
 
                 task = namedtuple('Task', ('packetname', 'action', 'src', 'dst', 'crc'))
 
@@ -438,37 +441,47 @@ class Manager(object):
 
     def handle_files(self):
         '''Получить новые файлы из репозитория или удалить локально старые'''
-        error = False
 
         main_queue = Queue()  # todo: пересмотреть работу с асинхронной очередью, ввиду блокировки из-за ожидания
         # main_queue = Queue(maxsize=self.threads * self.task_queue_k)
-        exc_queue = Queue()
 
-        for i in range(self.threads):
-            dispatcher = get_dispatcher(self.repo, encode=self.encode, ftpencode=self.ftpencode,
-                         logger=self.logger, tempdir=self.tempdir)
-            worker = Worker(main_queue, exc_queue, dispatcher, logger=self.logger)
-            worker.setName('{}'.format(worker))
-            worker.setDaemon(True)
-            worker.start()
-
-        gen_task = self.get_task()
-
-        for task in gen_task:
+        for task in self.get_task():  # загрузка очереди
             main_queue.put(task)
         self.logger.debug('Запущена очередь загрузки файлов')
-        main_queue.join()  # ожидаем окончания обработки очереди
 
-        while True:
-            try:
-                exc = exc_queue.get(block=False)
-            except Empty:
-                break
-            else:
-                self.logger.error(exc)
-                error = True
-        if error:
-            raise DownloadPacketError('Ошибка при загрузке пакетов из репозитория')
+        if main_queue.empty():  # очередь пустая - выходим
+            self.logger.debug('Очередь пустая')
+
+        else:
+            stopper = threading.Event()
+            exc_queue = Queue()
+            error = False
+            workers = []
+
+            for i in range(self.threads):
+                dispatcher = get_dispatcher(self.repo, encode=self.encode, ftpencode=self.ftpencode,
+                             logger=self.logger, tempdir=self.tempdir)
+                worker = Worker(main_queue, exc_queue, stopper, dispatcher, logger=self.logger)
+                worker.setName('{}'.format(worker))
+                worker.setDaemon(True)
+                workers.append(worker)
+
+            for worker in workers:  # стартуем пчелок
+                worker.start()
+
+            main_queue.join()  # ожидаем окончания обработки очереди
+            stopper.set()
+
+            while True:
+                try:
+                    exc = exc_queue.get(block=False)
+                except Empty:
+                    break
+                else:
+                    self.logger.error(exc)
+                    error = True
+            if error:
+                raise DownloadPacketError('Ошибка при загрузке пакетов из репозитория')
 
     def install_packets(self):
         '''Копирование пакетов из буфера в папку установки'''
@@ -558,7 +571,7 @@ class Manager(object):
 
     def _get_link_data(self, packet) -> tuple:
         try:
-            title = self.local_index[packet].get('title') or packet
+            title = self.remote_index[packet].get('title') or self.remote_index[packet].get('title') or packet
         except Exception:
             title = packet
 
@@ -596,58 +609,66 @@ class Manager(object):
 class Worker(threading.Thread):
     files_faulted = Counter()
     max_repeat = 3
-    stop_retrieve = threading.Event()
 
-    def __init__(self, queue, exc_queue, dispatcher, logger=None, *args, **kwargs):
+    def __init__(self, queue: Queue, exc_queue: Queue, stopper: threading.Event,  dispatcher: BaseDispatcher,
+                 logger=None, *args, **kwargs):
         super(Worker, self).__init__(*args, **kwargs)
         self.queue = queue
         self.exceptions = exc_queue
         self.dispatcher = dispatcher
         self.logger = logger or get_stdout_logger()
+        self.stopper = stopper
 
     def __repr__(self):
         return '<Worker-{}>'.format(id(self))
 
     def run(self):
-        while True:
-            if self.stop_retrieve.is_set():
-                self.logger.debug('{}: обнаружен стоп-флаг. выходим'.format(self))
-                raise StopIteration
+        try:
+            while True:
+                if self.stopper.is_set():
+                    # self.logger.debug('{}: обнаружен стоп-флаг. выходим'.format(self))
+                    break
 
-            if self.dispatcher.repo_is_busy():
-                self.logger.debug('{}: репозиторий заблокирован. установка стоп-флага'.format(self))
-                self.stop_retrieve.set()
-                raise StopIteration
+                if self.dispatcher.repo_is_busy():
+                    # self.logger.debug('{}: репозиторий заблокирован. выходим'.format(self))
+                    break
 
-            task = self.queue.get()
-            task_id = id(task)
-            self.logger.debug('{}<task-{}> ({}|{}|{})'.format(self, task_id, task.packetname, task.action, task.src))
-
-            if task.action == Action.delete:
-                self.remove_file(task.src)
-            else:
-                fp = self.dispatcher.get_file(task.src)
-                hash_sum = file_hash_calc(fp)
-
-                if not hash_sum == task.crc:
-                    self.files_faulted[task.src] += 1
-                    fault_count = self.files_faulted.get(task.src)
-                    self.logger.debug('{}<task-{}> <{} != {}> [{}]'.format(self, task_id, hash_sum, task.crc, fault_count))
-                    if fault_count is not None and fault_count > self.max_repeat - 1:
-                        self.exceptions.put('Неверная контрольная сумма файла "{}" из пакета "{}"'.format(
-                            os.path.basename(task.src), task.packetname))
-                    else:
-                        # fixme: при установленном максимальном размере, вставка в очередь блокирует процесс. перерсмотреть на возможность асинхронной работы
-                        self.queue.put(task)
+                try:
+                    task = self.queue.get(timeout=2)
+                except Empty:
+                    pass
                 else:
-                    try:
-                        self.logger.debug('{}<task-{}> move {} -> {}'.format(self, task_id, fp, task.dst ))
-                        self.dispatcher.move(fp, task.dst)
-                    except IOError as err:
-                        self.exceptions.put('{}<task-{}> Ошибка переноса в буфер файла "{}" из пакета "{}": {}'.format(
-                            self, task_id, os.path.basename(task.src), task.packetname, err))
+                    task_id = id(task)
+                    # self.logger.debug('{}<task-{}> ({}|{}|{})'.format(self, task_id, task.packetname, task.action, task.src))
 
-            self.queue.task_done()
+                    if task.action == Action.delete:
+                        self.remove_file(task.src)
+                    else:
+                        fp = self.dispatcher.get_file(task.src)
+                        hash_sum = file_hash_calc(fp)
+
+                        if not hash_sum == task.crc:
+                            self.files_faulted[task.src] += 1
+                            fault_count = self.files_faulted.get(task.src)
+                            # self.logger.debug('{}<task-{}> <{} != {}> [{}]'.format(self, task_id, hash_sum, task.crc, fault_count))
+                            if fault_count is not None and fault_count > self.max_repeat - 1:
+                                self.exceptions.put('Неверная контрольная сумма файла "{}" из пакета "{}"'.format(
+                                    os.path.basename(task.src), task.packetname))
+                            else:
+                                # fixme: при установленном максимальном размере, вставка в очередь блокирует процесс. перерсмотреть на возможность асинхронной работы
+                                self.queue.put(task)
+                        else:
+                            try:
+                                self.logger.debug('{}<task-{}> move {} -> {}'.format(self, task_id, fp, task.dst ))
+                                self.dispatcher.move(fp, task.dst)
+                            except IOError as err:
+                                self.exceptions.put('{}<task-{}> Ошибка переноса в буфер файла "{}" из пакета "{}": {}'.format(
+                                    self, task_id, os.path.basename(task.src), task.packetname, err))
+
+                    self.queue.task_done()
+        finally:
+            # self.logger.debug('{}: работу завершил'.format(self))
+            self.dispatcher.close()
 
     def remove_file(self, fpath):
         try:

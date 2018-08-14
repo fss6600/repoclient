@@ -171,6 +171,9 @@ class fmMain ( wx.Frame ):
         self.menuitemLinksUpdate = wx.MenuItem( self.menuService, wx.ID_ANY, u"Обновить ярлыки", wx.EmptyString, wx.ITEM_NORMAL )
         self.menuService.Append( self.menuitemLinksUpdate )
         
+        self.btFull = wx.MenuItem( self.menuService, wx.ID_ANY, u"Полная обработка", wx.EmptyString, wx.ITEM_CHECK )
+        self.menuService.Append( self.btFull )
+        
         self.wxMenuBar.Append( self.menuService, u"Сервис" ) 
         
         self.menuHelp = wx.Menu()
@@ -198,7 +201,8 @@ class fmMain ( wx.Frame ):
         self.Bind( wx.EVT_MENU, self.on_exit, id = self.menuitemExit.GetId() )
         self.Bind( wx.EVT_MENU, self.on_config, id = self.menuConfig.GetId() )
         self.Bind( wx.EVT_MENU, self.on_purge, id = self.menuitemPurge.GetId() )
-        self.Bind( wx.EVT_MENU, self.LinksUpdate, id = self.menuitemLinksUpdate.GetId() )
+        self.Bind( wx.EVT_MENU, self.on_links_update, id = self.menuitemLinksUpdate.GetId() )
+        self.Bind( wx.EVT_MENU, self.on_btFull, id = self.btFull.GetId() )
         self.Bind( wx.EVT_MENU, self.on_about, id = self.menuitemHelp.GetId() )
     
     def __del__( self ):
@@ -228,7 +232,10 @@ class fmMain ( wx.Frame ):
     def on_purge( self, event ):
         pass
     
-    def LinksUpdate( self, event ):
+    def on_links_update( self, event ):
+        pass
+    
+    def on_btFull( self, event ):
         pass
     
     def on_about( self, event ):
