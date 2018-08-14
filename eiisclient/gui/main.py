@@ -46,12 +46,23 @@ class fmMain ( wx.Frame ):
         bSizer26 = wx.BoxSizer( wx.VERTICAL )
         
         bSizer26.SetMinSize( wx.Size( 200,200 ) ) 
+        bSizer111 = wx.BoxSizer( wx.HORIZONTAL )
+        
         self.m_staticText1 = wx.StaticText( self.pLeft, wx.ID_ANY, u"Пакеты подсистем:", wx.DefaultPosition, wx.DefaultSize, 0 )
         self.m_staticText1.Wrap( -1 )
         
         self.m_staticText1.SetToolTip( u"Для установки/удаления поставьте/снимите галку" )
         
-        bSizer26.Add( self.m_staticText1, 0, wx.ALL, 5 )
+        bSizer111.Add( self.m_staticText1, 0, wx.ALL, 5 )
+        
+        
+        bSizer111.Add( ( 0, 0), 1, wx.EXPAND, 5 )
+        
+        self.btRefresh = wx.BitmapButton( self.pLeft, wx.ID_ANY, wx.ArtProvider.GetBitmap( wx.ART_UNDO, wx.ART_BUTTON ), wx.DefaultPosition, wx.DefaultSize, 0 )
+        bSizer111.Add( self.btRefresh, 0, wx.ALL, 5 )
+        
+        
+        bSizer26.Add( bSizer111, 0, wx.EXPAND, 5 )
         
         wxPacketListChoices = [u"Choice 1", u"Choice 2", u"Choice 3", u"Choice 4", u"Choice 5"]
         self.wxPacketList = wx.CheckListBox( self.pLeft, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wxPacketListChoices, 0 )
@@ -94,7 +105,7 @@ class fmMain ( wx.Frame ):
         self.m_panel6 = wx.Panel( self.m_splitter2, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
         bSizer11 = wx.BoxSizer( wx.VERTICAL )
         
-        self.wxLogView = wx.richtext.RichTextCtrl( self.m_panel6, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, wx.TE_AUTO_URL|wx.TE_READONLY|wx.HSCROLL|wx.VSCROLL|wx.WANTS_CHARS )
+        self.wxLogView = wx.richtext.RichTextCtrl( self.m_panel6, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, wx.TE_AUTO_URL|wx.TE_PROCESS_TAB|wx.TE_READONLY|wx.ALWAYS_SHOW_SB|wx.FULL_REPAINT_ON_RESIZE|wx.HSCROLL|wx.VSCROLL )
         bSizer11.Add( self.wxLogView, 1, wx.EXPAND|wx.ALL, 5 )
         
         bSizer12 = wx.BoxSizer( wx.HORIZONTAL )
@@ -133,7 +144,7 @@ class fmMain ( wx.Frame ):
         self.SetSizer( bSizer21 )
         self.Layout()
         self.wxStatusBar = self.CreateStatusBar( 1, wx.STB_SIZEGRIP, wx.ID_ANY )
-        self.m_menubar1 = wx.MenuBar( 0 )
+        self.wxMenuBar = wx.MenuBar( 0 )
         self.menuFile = wx.Menu()
         self.menuitemUpdate = wx.MenuItem( self.menuFile, wx.ID_ANY, u"Обновить"+ u"\t" + u"F5", u"Обновить пакеты", wx.ITEM_NORMAL )
         self.menuFile.Append( self.menuitemUpdate )
@@ -143,7 +154,7 @@ class fmMain ( wx.Frame ):
         self.menuitemExit = wx.MenuItem( self.menuFile, wx.ID_EXIT, u"Завершить"+ u"\t" + u"Ctrl+q", u"Завершить работу программы", wx.ITEM_NORMAL )
         self.menuFile.Append( self.menuitemExit )
         
-        self.m_menubar1.Append( self.menuFile, u"Файл" ) 
+        self.wxMenuBar.Append( self.menuFile, u"Файл" ) 
         
         self.menuService = wx.Menu()
         self.menuConfig = wx.MenuItem( self.menuService, wx.ID_ANY, u"Настройки", wx.EmptyString, wx.ITEM_NORMAL )
@@ -160,7 +171,7 @@ class fmMain ( wx.Frame ):
         self.menuitemLinksUpdate = wx.MenuItem( self.menuService, wx.ID_ANY, u"Обновить ярлыки", wx.EmptyString, wx.ITEM_NORMAL )
         self.menuService.Append( self.menuitemLinksUpdate )
         
-        self.m_menubar1.Append( self.menuService, u"Сервис" ) 
+        self.wxMenuBar.Append( self.menuService, u"Сервис" ) 
         
         self.menuHelp = wx.Menu()
         self.menuitemManual = wx.MenuItem( self.menuHelp, wx.ID_ANY, u"Руководство"+ u"\t" + u"F1", wx.EmptyString, wx.ITEM_NORMAL )
@@ -171,14 +182,17 @@ class fmMain ( wx.Frame ):
         self.menuitemHelp = wx.MenuItem( self.menuHelp, wx.ID_ANY, u"О программе", u"Информация о программе", wx.ITEM_NORMAL )
         self.menuHelp.Append( self.menuitemHelp )
         
-        self.m_menubar1.Append( self.menuHelp, u"Помощь" ) 
+        self.wxMenuBar.Append( self.menuHelp, u"Помощь" ) 
         
-        self.SetMenuBar( self.m_menubar1 )
+        self.SetMenuBar( self.wxMenuBar )
         
         
         self.Centre( wx.BOTH )
         
         # Connect Events
+        self.btRefresh.Bind( wx.EVT_BUTTON, self.on_refresh )
+        self.wxPacketList.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_package_list )
+        self.wxLogView.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_log_info )
         self.btUpdate.Bind( wx.EVT_BUTTON, self.on_update )
         self.Bind( wx.EVT_MENU, self.on_update, id = self.menuitemUpdate.GetId() )
         self.Bind( wx.EVT_MENU, self.on_exit, id = self.menuitemExit.GetId() )
@@ -192,6 +206,15 @@ class fmMain ( wx.Frame ):
     
     
     # Virtual event handlers, overide them in your derived class
+    def on_refresh( self, event ):
+        pass
+    
+    def on_enter_package_list( self, event ):
+        pass
+    
+    def on_enter_log_info( self, event ):
+        pass
+    
     def on_update( self, event ):
         pass
     
@@ -227,7 +250,7 @@ class fmMain ( wx.Frame ):
 class fmConfig ( wx.Frame ):
     
     def __init__( self, parent ):
-        wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = wx.EmptyString, pos = wx.DefaultPosition, size = wx.Size( 800,220 ), style = wx.CAPTION|wx.CLOSE_BOX|wx.FRAME_FLOAT_ON_PARENT|wx.RESIZE_BORDER|wx.TAB_TRAVERSAL )
+        wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = wx.EmptyString, pos = wx.DefaultPosition, size = wx.Size( 800,377 ), style = wx.CAPTION|wx.CLOSE_BOX|wx.FRAME_FLOAT_ON_PARENT|wx.RESIZE_BORDER|wx.TAB_TRAVERSAL )
         
         self.SetSizeHints( wx.Size( -1,220 ), wx.DefaultSize )
         
@@ -250,12 +273,22 @@ class fmConfig ( wx.Frame ):
         self.wxEiisInstallPath = wx.DirPickerCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, u"Выберите директорию для установки подсистем", wx.DefaultPosition, wx.DefaultSize, wx.DIRP_DEFAULT_STYLE )
         fgSizer1.Add( self.wxEiisInstallPath, 0, wx.ALL|wx.EXPAND, 5 )
         
+        self.m_staticText61 = wx.StaticText( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.m_staticText61.Wrap( -1 )
+        
+        fgSizer1.Add( self.m_staticText61, 0, wx.ALL, 5 )
+        
+        self.wxInstallToUserProfile = wx.CheckBox( self.m_panel15, wx.ID_ANY, u"устанавливать в профиль пользователя", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.wxInstallToUserProfile.SetValue(True) 
+        fgSizer1.Add( self.wxInstallToUserProfile, 0, wx.ALL, 5 )
+        
         self.wxStaticText1 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Путь к репозиторию:", wx.DefaultPosition, wx.DefaultSize, 0 )
         self.wxStaticText1.Wrap( -1 )
         
         fgSizer1.Add( self.wxStaticText1, 0, wx.ALL, 5 )
         
         self.wxRepoPath = wx.TextCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( 500,-1 ), 0 )
+        self.wxRepoPath.SetMaxLength( 256 ) 
         self.wxRepoPath.SetToolTip( u"Путь к репозиторию " )
         
         fgSizer1.Add( self.wxRepoPath, 0, wx.ALL|wx.EXPAND, 5 )
@@ -279,6 +312,22 @@ class fmConfig ( wx.Frame ):
         self.wxPurgePackets.SetToolTip( u"Для сокращения объема закачиваемых файлов из репозитория можно оставлять локально файлы подсистем, при деактивации пакетов подсистем. В дальнейшем будут скачиваться только новые файлы." )
         
         fgSizer1.Add( self.wxPurgePackets, 0, wx.ALL, 5 )
+        
+        self.m_staticText7 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Кодировка", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.m_staticText7.Wrap( -1 )
+        
+        fgSizer1.Add( self.m_staticText7, 0, wx.ALL, 5 )
+        
+        self.wxEncode = wx.TextCtrl( self.m_panel15, wx.ID_ANY, u"UTF-8", wx.DefaultPosition, wx.DefaultSize, 0 )
+        fgSizer1.Add( self.wxEncode, 0, wx.ALL|wx.EXPAND, 5 )
+        
+        self.m_staticText8 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Кодировка FTP-сервера", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.m_staticText8.Wrap( -1 )
+        
+        fgSizer1.Add( self.m_staticText8, 0, wx.ALL, 5 )
+        
+        self.wxFTPEncode = wx.TextCtrl( self.m_panel15, wx.ID_ANY, u"UTF-8", wx.DefaultPosition, wx.DefaultSize, 0 )
+        fgSizer1.Add( self.wxFTPEncode, 0, wx.ALL|wx.EXPAND, 5 )
         
         
         bSizer34.Add( fgSizer1, 0, wx.EXPAND, 5 )
@@ -308,6 +357,7 @@ class fmConfig ( wx.Frame ):
         self.Centre( wx.BOTH )
         
         # Connect Events
+        self.wxInstallToUserProfile.Bind( wx.EVT_CHECKBOX, self.on_eiis_path_click )
         self.sdApply.Bind( wx.EVT_BUTTON, self.Apply )
         self.sdCancel.Bind( wx.EVT_BUTTON, self.Cancel )
     
@@ -316,6 +366,9 @@ class fmConfig ( wx.Frame ):
     
     
     # Virtual event handlers, overide them in your derived class
+    def on_eiis_path_click( self, event ):
+        pass
+    
     def Apply( self, event ):
         pass
     

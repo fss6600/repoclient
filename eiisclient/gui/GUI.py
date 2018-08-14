@@ -1,68 +1,41 @@
 # -*- coding: utf-8 -*-
+import hashlib
+import logging
 import os
+import shutil
+import sys
+import threading
+from time import sleep
+
 import wx
 
+from eiisclient.core.exceptions import CopyPackageError, PacketDeleteError
 from eiisclient.gui import main
 from eiisclient import __version__, __author__, __email__, __division__, CONFIGFILENAME
 from eiisclient import DEFAULT_ENCODING, WORKDIR, DEFAULT_INSTALL_PATH
-from eiisclient.core.utils import to_json, from_json, get_config_data
-from eiisclient.core.manage import Manager
+from eiisclient.core.utils import to_json, from_json, get_config_data, hash_calc
+from eiisclient.core.manage import Manager, copy_package
 
 
-
-
-
-
-
-class ConfigFrame(main.fmConfig):
-
-    def __init__(self, *args, **kwargs):
-        self.main_frame = kwargs.pop('main_frame')
-        super(ConfigFrame, self).__init__(*args, **kwargs)
-
-        self.config = get_config_data()
-
-        self.sdApply.Label = 'Применить'
-        self.sdCancel.Label = 'Отменить'
-
-        self.wxEiisInstallPath.SetPath(self.config.get('eiispath', DEFAULT_INSTALL_PATH))
-        self.wxEiisInstallPath.Enable(False)
-
-        self.wxRepoPath.Value = self.config.get('repopath', '')
-        self.wxThreadsCount.Select(self.config.get('threads_count', 1) - 1)
-        self.wxPurgePackets.SetValue(self.config.get('purge_packets', False))
-
-        self.sdCancel.SetFocus()
-
-    def Apply( self, event ):
-        self.config['repopath'] = self.wxRepoPath.GetValue()
-        self.config['eiispath'] = self.wxEiisInstallPath.GetPath()
-        self.config['threads'] = int(self.wxThreadsCount.Selection) + 1
-        self.config['purge'] = self.wxPurgePackets.GetValue()
-
-        #  write to file
-        confile = os.path.join(WORKDIR, CONFIGFILENAME)
-        with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
-            fp.write(to_json(self.config))
-        if self.main_frame is not None:
-            self.main_frame.log_append('from config')
-        self.Destroy()
-
-    def Cancel(self, event):
-        self.Destroy()
+def move_packages(src, dst):
+    try:
+        for packname in os.listdir(src):
+            s = os.path.join(src, packname)
+            d = os.path.join(dst, packname)
+            copy_package(s, d)
+    except Exception as err:
+        raise CopyPackageError from err
 
 
 class MainFrame(main.fmMain):
 
-    def __init__(self, manager):
+    def __init__(self):
         super(MainFrame, self).__init__(None)
-        self.manager = manager
 
         if not os.path.exists(WORKDIR):
             os.makedirs(WORKDIR, exist_ok=True)
 
-        self.logger = None  # todo set logger here
-
+        self.logger = self.get_logger()
         self.local_index = None
         self.new_index = None
         self.local_index_hash = None
@@ -70,17 +43,18 @@ class MainFrame(main.fmMain):
         self.active_packet_list = None
         self.repopath = None
         self.eiispath = None
+        self.manager = None
 
-        #  init
-
-        #
-        self.wxLogView.Clear()
-        # self.wxStatusBar.SetFieldsCount(2)
-        # self.wxStatusBar.SetStatusText('Версия: {}'.format(__version__), 1)
-        self.Show()
         self.init()
+        self.wxLogView.Clear()
+        self.Show()
 
-    #  обработка событий
+    def on_enter_package_list( self, event ):
+        self.wxPacketList.SetFocus()
+
+    def on_enter_log_info( self, event ):
+        self.wxLogView.SetFocus()
+
     def on_about(self, event):
         title = 'О программе'
         msg = "Обновление подсистем ЕИИС 'Соцстрах'"
@@ -93,57 +67,104 @@ class MainFrame(main.fmMain):
         dlg.Destroy()
 
     def on_config(self, event):
-        self.log_append('configurator before open')
-        res = ConfigFrame(self, main_frame=self).Show()
-        self.log_append('configurator after open')
-        self.log_append(res)
-
+        ConfigFrame(self, self).Show()
 
     def on_exit(self, event):
         ''''''
         # todo  добавить дополнителльную обработку перед завершением
         self.Close(True)
 
-    def on_update(self, event):
-        self.init()
-        active_list = self.wxPacketList.GetCheckedStrings()
-        # res = self.manager.start(active_list)
+    def on_update( self, event ):
+        thread = threading.Thread(target=self.run)
+        thread.setDaemon(True)
+        thread.start()
 
-        # self.log_append(self.config.get('eiispath', DEFAULT_INSTALL_PATH))
+    def on_refresh( self, event ):
+        self.update_packet_list()
 
-    #
-    def init(self):
-        ''''''
-        self._init_config()
-        self.manager = Manager(self.repopath, self.logger)
-        self._init_gui()
+    def run(self):
+        installed = self.manager.get_installed_packets()
+        selected = self.wxPacketList.GetCheckedStrings()
 
-        self.log_append(str(self.manager))
+        self.wxPacketList.Disable()
+        self.btUpdate.Disable()
+        self.btRefresh.Disable()
+        self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=False)
+        self.menuService.Enable(id=self.menuConfig.GetId(), enable=False)
+        self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=False)
+        self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=False)
 
+        try:
+            self.manager.activate()
+            self.manager.start(installed, selected)
+        except Exception as err:
+            self.logger.error(err)
+
+        finally:
+            self.manager.deactivate()
+            self.manager.set_full(False)
+            
+            self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=True)
+            self.menuService.Enable(id=self.menuConfig.GetId(), enable=True)
+            self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=True)
+            self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=True)
+            self.wxPacketList.Enable()
+            self.btUpdate.Enable()
+            self.btRefresh.Enable()
+
+    def init(self, full=False):
+        """"""
+        config = get_config_data(WORKDIR)
+
+        self.threads = config.get('threads', 1)
+        self.encode = config.get('encode', DEFAULT_ENCODING)
+        self.ftpencode = config.get('ftpencode', self.encode)
+        self.purge = config.get('purge', False)
+        self.repopath = config.get('repopath', '')
+        self.eiispath = config.get('eiispath', DEFAULT_INSTALL_PATH)
+
+        if self.repopath:
+            self.manager = Manager(self.repopath,
+                                   eiispath=self.eiispath,
+                                   logger=self.logger,
+                                   encode=self.encode,
+                                   ftpencode=self.ftpencode,
+                                   purge=self.purge,
+                                   threads=self.threads,
+                                   full=full
+                                   )
+        else:
+            self.manager = None
+
+        self.update_packet_list()
+        self.update_info_view()
 
     def _init_gui(self):
         self.update_packet_list()
         self.update_info_view()
-        self.wxGauge.Value = 0
-
-    def _init_config(self):
-        config = get_config_data(WORKDIR)
-        self.repopath = config.get('repopath')
-        self.eiispath = config.get('repopath') or DEFAULT_INSTALL_PATH
 
     def log_append(self, data):
+        # self.wxLogView.SetScrollPos()
         self.wxLogView.AppendText(data)
-        self.wxLogView.LineBreak()
 
     def update_packet_list(self):
         ''''''
-        # active_list = self.get_active_packet_list()
-        index = self.manager.local_index.keys()
+        self.wxPacketList.Clear()
 
-        active_list = ['Форма 4', 'Форма 6', 'Справочник чего-то там', 'Распределение льготников']
-        # index = ['Форма 4', 'Бухгалтерия', 'Ревизор']
-        index = []
+        if self.manager is None:
+            self.logger.error('Не указан репозиторий. Проверьте настройки.')
+            return
 
+        local_index = self.manager.get_local_index()
+
+        if not local_index:
+            self.logger.debug('Не обнаружены данные локального индекса. Загрузка с сервера')
+            self.manager.activate()
+            local_index = self.manager.remote_index
+            self.manager.deactivate()
+
+        active_list = self.manager.get_installed_packets()
+        index = local_index.keys()
         shared = set(active_list) & set(index)
         abandoned = set(active_list) ^ shared
 
@@ -166,32 +187,106 @@ class MainFrame(main.fmMain):
                 self.wxInfoView.AppendToPage('<li>{}</li>'.format(name))
             self.wxInfoView.AppendToPage('<ul>')
 
+    def get_logger(self):
+        logger = logging.getLogger(__name__)
+        level = logging.INFO
+        formatter = logging.Formatter('%(message)s')
+        try:
+            arg = sys.argv[1]
+            if arg == '-d' or arg == '--debug':
+                level = logging.DEBUG
+                formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+        except IndexError:
+            pass
+        logger.setLevel(level)
+        handler = logging.StreamHandler(stream=Stream(self))
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        return logger
 
 
-    def fix_active_packet_list(self):
-        with open(PACKETLISTFILE, 'w') as fp:
-            fp.write(to_json(sorted(self.active_packet_list)))
+class ConfigFrame(main.fmConfig):
 
-    def get_index_data(self):
-        data = {}
-        if os.path.exists(INDEXFILE):
-            with open(INDEXFILE) as fp:
-                data = from_json(fp.read())
+    def __init__(self, main_frame: MainFrame, *args, **kwargs):
+        self.main_frame = main_frame
+        super(ConfigFrame, self).__init__(*args, **kwargs)
 
-        # return data
+        self.config = get_config_data(WORKDIR)
+        self.config_hash = hash_calc(self.config)
 
-        return {
-            'Бухгалтерия': '',
-            'Отдел кадров': '',
-            'Форма 4': '',
-            'Форма 6': '',
-            'Справочник ОКВЭД': '',
-            'Администратор': '',
-                }
+        ##
+        self.wxRepoPath.Value = self.config.get('repopath', '')  # путь к репозитоию
 
-    def fix_index_data(self):
-        ''''''
+        self.eiis_path_user = os.path.join(os.path.expandvars('%APPDATA%'), r'ЕИИС ФСС РФ')
+        config_install_path = self.config.get('eiispath', DEFAULT_INSTALL_PATH)
+        if config_install_path == self.eiis_path_user:  # путь установки
+            self.wxInstallToUserProfile.SetValue(True)
+        else:
+            self.wxInstallToUserProfile.SetValue(False)
+        self.wxEiisInstallPath.SetPath(config_install_path)
+        self.wxEiisInstallPath.Enable(False)
 
-    def update_gauge(self, data):
-        self.wxGauge.Value = data
+        self.wxThreadsCount.Select(self.config.get('threads', 1) - 1)
+        self.wxPurgePackets.SetValue(self.config.get('purge', False))
+        self.wxEncode.SetValue(self.config.get('encode', 'UTF-8'))
+        self.wxFTPEncode.SetValue(self.config.get('ftpencode', 'UTF-8'))
 
+        self.sdApply.Label = 'Применить'
+        self.sdCancel.Label = 'Отменить'
+        self.sdCancel.SetFocus()
+
+    def on_eiis_path_click(self, event=None):
+        if self.wxInstallToUserProfile.GetValue():
+            path = self.eiis_path_user
+        else:
+            path = DEFAULT_INSTALL_PATH
+        self.wxEiisInstallPath.SetPath(path)
+
+    def Apply(self, event):
+        self.config['repopath'] = self.wxRepoPath.GetValue()
+        self.config['eiispath'] = self.wxEiisInstallPath.GetPath()
+        self.config['threads'] = int(self.wxThreadsCount.Selection) + 1
+        self.config['purge'] = self.wxPurgePackets.GetValue()
+        self.config['encode'] = self.wxEncode.GetValue().upper()
+        self.config['ftpencode'] = self.wxFTPEncode.GetValue().upper()
+
+        #  write to file if changed
+        if not hash_calc(self.config) == self.config_hash:
+            full = False
+            confile = os.path.join(WORKDIR, CONFIGFILENAME)
+            with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
+                fp.write(to_json(self.config))
+
+            if not self.config['eiispath'] == self.main_frame.eiispath:
+                dlg = wx.MessageDialog(None, 'Скопировать существующие подсистемы по новому пути?',
+                                       '', wx.YES_NO | wx.ICON_QUESTION)
+                ans = dlg.ShowModal()
+
+                if ans == wx.ID_YES:
+                    try:
+                        move_packages(self.main_frame.eiispath, self.config['eiispath'])
+                    except CopyPackageError:
+                        self.main_frame.logger.warning('Не удалось скопировать уже установленные подсистемы.')
+
+                    try:
+                        shutil.rmtree(self.main_frame.eiispath)
+                    except Exception:
+                        self.main_frame.logger.warning('Не удалось удалить установленные подсистемы по прежнему пути.')
+
+                    full = True
+
+            self.main_frame.init(full)  # reread config and set new manager
+            self.main_frame.manager.update_links()
+
+        self.Destroy()
+
+    def Cancel(self, event):
+        self.Destroy()
+
+
+class Stream():
+    def __init__(self, obj: MainFrame):
+        self.obj = obj
+
+    def write(self, record):
+        self.obj.wxLogView.AppendText(record)

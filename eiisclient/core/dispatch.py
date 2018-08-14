@@ -55,30 +55,24 @@ class BaseDispatcher(object):
         raise NotImplementedError
 
     def move(self, src, dst):
-        # try:
-        #     shutil.move(src, dst)
-        # except FileNotFoundError:
-        #     dirname = os.path.dirname(dst)
-        #     os.makedirs(dirname, exist_ok=True)
-        #     shutil.move(src, dst)
         dirname = os.path.dirname(dst)
+
         if not os.path.exists(dirname):
             os.makedirs(dirname, exist_ok=True)
 
         try:
             shutil.copyfile(src, dst)
         except PermissionError:
-            #  err to log
             try:
                 import stat
                 if not os.access(dst, os.W_OK):
                     os.chmod(dst, stat.S_IWUSR)
-                    # time.sleep(0.2)
+                    time.sleep(0.2)
                 os.unlink(dst)
                 time.sleep(0.2)
                 shutil.copyfile(src, dst)
-            except Exception:
-                raise IOError
+            except Exception as err:
+                raise IOError(err)
         else:
             os.unlink(src)
 
@@ -116,7 +110,7 @@ class BaseDispatcher(object):
         # except OSError as err:
         #     self.logger.debug('** ошибка удаления папки  {} - {}'.format(path, err))
 
-    remove_eiis = remove_dir  # todo: убрать
+    # remove_eiis = remove_dir
 
     def write(self, fpath, data):
         """
@@ -138,6 +132,9 @@ class BaseDispatcher(object):
         self.logger.debug('{}: encode: {}'.format(self, self.encode))
         self.logger.debug('{}: tmpdir: {}'.format(self, self.tempdir.name))
         self.logger.debug('{}: repo: {}'.format(self, self.repo))
+
+    def close(self):
+        pass
 
 
 class FileDispatcher(BaseDispatcher):
@@ -204,7 +201,7 @@ class FTPDispatcher(BaseDispatcher):
         self.repo = None
         self._parse_url_data(repo)
         self.ftp = self._ftp_init()
-        self._finalizer = weakref.finalize(self, self._close)
+        self._finalizer = weakref.finalize(self, self.close)
 
     def __repr__(self):
         return 'FTP Dispatcher  <{}> on <{}{}>'.format(id(self), self.hostname, self.repo)
@@ -226,27 +223,25 @@ class FTPDispatcher(BaseDispatcher):
             ftp.connect(self.hostname)
             ftp.login(self.username, self.password)
         except Exception as err:
-            raise  # todo exception
+            raise ConnectionError from err
 
         return ftp
 
     def _check_connection(self):
         from ftplib import error_temp
         try:
-            self.ftp.sendcmd('TYPE I')
+            self.ftp.sendcmd('NOOP')
         except error_temp as err:
             if err and err.args[0].startswith('421'):
                 self.ftp = self._ftp_init()
             else:
-                raise err  # todo: add exception
+                raise ConnectionError from err
 
     def _sanitize_path(self, path):
         """ Заменяет \ на / в пути """
         return '{}'.format(path).replace('\\', '/')
 
-    def _close(self):
-        self.tempdir.cleanup()
-
+    def close(self):
         if self.ftp is not None:
             try:
                 self.ftp.quit()
@@ -272,8 +267,8 @@ class FTPDispatcher(BaseDispatcher):
 
         with open(dst_path, 'wb') as fp:
             try:
-                self.ftp.retrbinary('RETR %s' % src_path, callback=fp.write)
-            except Exception as err:  # todo пересмотреть исключения
+                self.ftp.retrbinary('RETR {}'.format(src_path), callback=fp.write)
+            except Exception as err:
                 raise IOError(err)
 
         return dst_path

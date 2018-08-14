@@ -86,86 +86,88 @@ def main():  # pragma: no cover
     except SystemExit as err:
         return err
 
-    logger = logging.Logger(__name__)
-    if args.debug:
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
+    if not args.nogui:  # GUI
+        app = wx.App()
+        GUI.MainFrame()
+        app.MainLoop()
 
-    if args.log:
-        logfile = os.path.join(WORKDIR, 'messages.log')
-        log_handler = RotatingFileHandler(logfile, maxBytes=1024 * 1024, encoding=args.encode or DEFAULT_ENCODING)
-        logger.addHandler(log_handler)
+    else:  # CLI
+        logger = logging.Logger(__name__)
+        if args.debug:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.INFO)
 
-    if args.nogui:
+        if args.log:
+            logfile = os.path.join(WORKDIR, 'messages.log')
+            log_handler = RotatingFileHandler(logfile, maxBytes=1024 * 1024, encoding=args.encode or DEFAULT_ENCODING)
+            logger.addHandler(log_handler)
+
         con_formatter = logging.Formatter('%(message)s')
         con_handler = logging.StreamHandler(sys.stdout)
         con_handler.setFormatter(con_formatter)
         logger.addHandler(con_handler)
 
-    ##
+        config = get_config_data(WORKDIR)
+        repopath = args.repopath or config.get('repopath', None)
 
-    config = get_config_data(WORKDIR)
-    repopath = args.repopath or config.get('repopath', None)
+        if not repopath:
+            return 'Не указан репозиторий'
 
-    if not repopath:
-        return 'Не указан репозиторий'
+        eiis_path = args.eiispath or config.get('eiispath', DEFAULT_INSTALL_PATH)
+        threads = args.threads or config.get('threads', 1)
+        encode = args.encode or config.get('encode', DEFAULT_ENCODING)
+        ftpencode = args.ftpencode or config.get('ftpencode', encode)
+        purge = args.purge or config.get('purge', False)
 
-    eiis_path = args.eiispath or config.get('eiispath', DEFAULT_INSTALL_PATH)
-    threads = args.threads or config.get('threads', 1)
-    encode = args.encode or config.get('encode', DEFAULT_ENCODING)
-    ftpencode = args.ftpencode or config.get('ftpencode', encode)
-    purge = args.purge or config.get('purge', False)
+        if args.command == 'init':
+            if not os.path.exists(WORKDIR):
+                os.makedirs(WORKDIR, exist_ok=True)
 
-    if args.command == 'init':
-        if not os.path.exists(WORKDIR):
-            os.makedirs(WORKDIR, exist_ok=True)
+            confile = os.path.join(WORKDIR, CONFIGFILENAME)
+            confdata = {
+                'repopath': repopath,
+                'eiispath': eiis_path,
+                'threads': threads,
+                'encode': encode,
+                'purge': purge,
+                'ftpencode': ftpencode
+                }
+            with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
+                fp.write(to_json(confdata))
 
-        confile = os.path.join(WORKDIR, CONFIGFILENAME)
-        confdata = {
-            'repopath': repopath,
-            'eiispath': eiis_path,
-            'threads': threads,
-            'encode': encode,
-            'purge': purge,
-            'ftpencode': ftpencode
-            }
-        with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
-            fp.write(to_json(confdata))
+            selected_file_name = os.path.join(WORKDIR, SELECTEDFILENAME)
+            if not os.path.exists(selected_file_name):
+                with open(selected_file_name, 'wb') as fp:
+                    fp.write('# Данный файл используется только при работе из консоли\n'.encode(encode))
+                    fp.write('# Добавьте наименования пакетов для установки подсистемы по одному на строку\n\n'.encode(encode))
+            return ('Инициализация прошла успешно')
 
-        selected_file_name = os.path.join(WORKDIR, SELECTEDFILENAME)
-        if not os.path.exists(selected_file_name):
-            with open(selected_file_name, 'wb') as fp:
-                fp.write('# Данный файл используется только при работе из консоли\n'.encode(encode))
-                fp.write('# Добавьте наименования пакетов для установки подсистемы по одному на строку\n\n'.encode(encode))
-        return ('Инициализация прошла успешно')
+        manager = Manager(repopath, logger=logger, eiispath=eiis_path, encode=encode,
+                          ftpencode=ftpencode, threads=threads, purge=purge)
 
-    manager = Manager(repopath, workdir=WORKDIR, logger=logger, eiispath=eiis_path, encode=encode,
-                      ftpencode=ftpencode, threads=threads, purge=purge)
+        if args.command == 'info':
+            try:
+                info = manager.get_info()
+                for key in sorted(info.keys()):
+                    print('{:25}{}'.format(key, info.get(key)))
+            except RepoIsBusy as err:
+                logger.error(err)
+            except DispatcherActivationError as err:
+                logger.error('ошибка активации диспетчера репозитория: {}'.format(err))
+            except Exception as err:
+                logger.error('Ошибка: {}'.format(err))
+            return
 
-    if args.command == 'info':
-        try:
-            info = manager.get_info()
-            for key in sorted(info.keys()):
-                print('{:25}{}'.format(key, info.get(key)))
-        except RepoIsBusy as err:
-            logger.error(err)
-        except DispatcherActivationError as err:
-            logger.error('ошибка активации диспетчера репозитория: {}'.format(err))
-        except Exception as err:
-            logger.error('Ошибка: {}'.format(err))
-        return
+        if args.command == 'clean':
+            try:
+                manager.clean_removed()
+            except Exception as err:
+                res = 'Ошибка при очистке "удаленных" пакетов: {}'.format(err)
+            else:
+                res = 'Успешно очищено от удаленных'
+            return res
 
-    if args.command == 'clean':
-        try:
-            manager.clean_removed()
-        except Exception as err:
-            res = 'Ошибка при очистке "удаленных" пакетов: {}'.format(err)
-        else:
-            res = 'Успешно очищено от удаленных'
-        return res
-
-    if args.nogui:
         installed = manager.get_installed_packets()
         selected = manager.get_selected_packets()
 
@@ -177,7 +179,7 @@ def main():  # pragma: no cover
             return
         except Exception as err:
             logger.error(err)
-            raise
+            # raise
             return 2
         else:
             pass
@@ -185,11 +187,6 @@ def main():  # pragma: no cover
             end_time = datetime.datetime.utcnow()
             during_time = end_time - begin_time
             logger.debug('Завершено за {}'.format(during_time))
-
-    else:
-        app = wx.App()
-        GUI.MainFrame(manager=manager)
-        app.MainLoop()
 
 
 if __name__ == '__main__':

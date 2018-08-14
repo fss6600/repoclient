@@ -56,15 +56,11 @@ def file_hash_calc(fpath):  # pragma: no cover
 
 def hash_calc(data):  # pragma: no cover
     sha1 = hashlib.sha1()
-    obj = to_json(data).encode(DEFAULT_ENCODING)
-    sha1.update(obj)
+    sha1.update(to_json(data).encode(DEFAULT_ENCODING))
     return sha1.hexdigest()
 
 
 def get_config_data(workdir, encode=DEFAULT_ENCODING):
-    if not os.path.exists(workdir):
-        print('Не обнаружена рабочая директория. Возможно программа не проинициализирована')
-
     cfile = os.path.join(workdir, 'config.json')
     try:
         with open(cfile, encoding=encode) as fp:

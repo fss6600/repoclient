@@ -26,16 +26,28 @@ class PacketInstallError(Exception):
         return 'Ошибка при установке пакетов'
 
 
+class CopyPackageError(Exception):
+    def __str__(self):
+        return 'Ошибка при копировании пакетов'
+
+
 class PacketDeleteError(Exception):
     def __str__(self):
         return 'Ошибка при удалении пакетов'
 
 
 class DownloadPacketError(Exception):
-    def __str__(self):
-        return 'Ошибка при загрузке пакетов подсистем'
+    pass
 
 
 class LinkUpdateError(Exception):
+    pass
+
+
+class InstallPermissionError(Exception):
+    def __init__(self, message=None):
+        self.message = message or ''
+
     def __str__(self):
-        return 'Ошибка при удалении ярлыков'
+        msg = 'Недостаточно прав доступа для установки пакета подсистем'
+        return msg + ': {}'.format(self.message) if self.message else msg

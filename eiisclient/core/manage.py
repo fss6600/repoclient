@@ -8,6 +8,9 @@ import sys
 import threading
 import time
 import weakref
+
+import pythoncom
+
 try:
     import winshell, win32con
 except ImportError:
@@ -24,7 +27,7 @@ from eiisclient.core.dispatch import get_dispatcher
 from eiisclient.core.eiisreestr import REESTR
 from eiisclient.core.exceptions import (
     RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, PacketInstallError, DownloadPacketError,
-    PacketDeleteError, LinkUpdateError, NoUpdates)
+    PacketDeleteError, LinkUpdateError, NoUpdates, InstallPermissionError)
 from eiisclient.core.utils import get_temp_dir, file_hash_calc, from_json, to_json
 from eiisclient import __version__
 
@@ -43,31 +46,48 @@ class Status(Enum):
 
 def get_stdout_logger() -> logging.Logger:
     logger = logging.Logger(__name__)
-    con_handler = logging.StreamHandler(sys.stdout())
+    con_handler = logging.StreamHandler(sys.stdout)
     logger.addHandler(con_handler)
     logger.setLevel(logging.INFO)
 
     return logger
 
 
+def copy_package(src, dst):
+    for top, _, files in os.walk(src, topdown=False):
+        for file in files:
+            s = os.path.join(top, file)
+            d = os.path.join(os.path.dirname(dst), os.path.relpath(s, os.path.dirname(src)))
+            try:
+                shutil.copyfile(s, d)
+            except FileNotFoundError:  # нет директории в месте назначения
+                try:
+                    os.makedirs(os.path.dirname(d), exist_ok=True)
+                except PermissionError:
+                    raise
+                else:
+                    shutil.copyfile(s, d)
+                    pass
+
+
 class Manager(object):
     ''''''
 
-    def __init__(self, repo, workdir=None, eiispath=None, logger=None, encode=None, purge=False, threads=1, **kwargs):
+    def __init__(self, repo, eiispath=None, logger=None, encode=None, purge=False, threads=1, **kwargs):
         self.repo = repo
         self.logger = logger or get_stdout_logger()
-        self.workdir = workdir or WORKDIR  #????
         self.eiispath = eiispath or DEFAULT_INSTALL_PATH
         self.tempdir = get_temp_dir(prefix='eiis_man_tmp_')
-        self.buffer = os.path.join(self.workdir, 'buffer')
+        self.buffer = os.path.join(WORKDIR, 'buffer')
         self.encode = encode or DEFAULT_ENCODING
         self.ftpencode = kwargs.get('ftpencode', encode)
         self.purge = purge
+        self.full = kwargs.get('full', False)
         self.threads = threads
         self.task_queue_k = kwargs.get('kqueue', 2)  # коэффициент размера основной очереди загрузки
-        self.local_index_file = os.path.join(self.workdir, 'index.json')
+        self.local_index_file = os.path.join(WORKDIR, 'index.json')
         self.local_index_file_hash = os.path.join('{}.sha1'.format(self.local_index_file))
-        self.selected_packets_list_file = os.path.join(self.workdir, SELECTEDFILENAME)
+        self.selected_packets_list_file = os.path.join(WORKDIR, SELECTEDFILENAME)
         self.action_list = {}
         self.disp = None
         self.local_index = None
@@ -93,8 +113,8 @@ class Manager(object):
             self.activate()
 
             # проверка на наличие обновлений
-            if not install and not delete and not self.repo_updated():
-                raise NoUpdates
+            # if not install and not delete and not self.repo_updated():
+            #     raise NoUpdates
 
             self.action_list['install'] = self.parse_data_by_action_gen(install, Action.install)
             self.action_list['update'] = self.parse_data_by_action_gen(update, Action.update)
@@ -115,8 +135,8 @@ class Manager(object):
                 self.install_packets()
 
             # запись данных нового индекса и контрольной суммы
-            if not os.path.exists(self.workdir):
-                os.makedirs(self.workdir, exist_ok=True)
+            if not os.path.exists(WORKDIR):
+                os.makedirs(WORKDIR, exist_ok=True)
 
             with open(self.local_index_file, 'w') as fp_index, open(self.local_index_file_hash, 'w') as fp_hash:
                 fp_index.write(to_json(self.remote_index))
@@ -169,6 +189,7 @@ class Manager(object):
             self.disp = get_dispatcher(self.repo, logger=self.logger, encode=self.encode,
                                        ftpencode=self.ftpencode, tempdir=self.tempdir)
         except Exception as err:
+            self.logger.error('ошибка активации диспетчера')
             self.logger.debug('repo: {}'.format(self.repo))
             self.logger.debug('encode: {}'.format(self.encode))
             raise DispatcherActivationError(err)
@@ -187,6 +208,8 @@ class Manager(object):
         self.action_list['delete'] = ()
 
     def deactivate(self):
+        if self.disp:
+            self.disp.close()
         self.disp = None
         self.action_list = {}
         self.local_index = None
@@ -267,6 +290,9 @@ class Manager(object):
             except LinkUpdateError:
                 self.logger.error('ошибка удаления ярлыка для {}'.format(packet))
 
+    def set_full(self, value=False):
+        self.full = value
+
     def clean_removed(self):
         for packet in os.listdir(self.eiispath):
             if packet.endswith('.removed'):
@@ -327,20 +353,17 @@ class Manager(object):
     def parse_data_by_action_gen(self, seq, action):
         ''''''
         if action == Action.install:
-            self.logger.info('Обработка данных на установку пакетов')
-            for packet in seq:
-                packet_is_present = self.claim_packet(packet)
-                files = self.remote_index[packet]['files']
+            self.logger.info('Обработка данных на установку пакетов:')
+            for package in seq:
+                self.logger.info('- {}'.format(package))
+                packet_is_present = self.claim_packet(package)
+                files = self.remote_index[package]['files']
                 for file in files:
-                    if packet_is_present:
-                        fp = os.path.join(self.eiispath, packet, file)
-                        if os.path.exists(fp) and file_hash_calc(fp) == files[file]:
-                            continue
-                    fp = os.path.join(self.buffer, packet, file)
-                    if os.path.exists(fp) and file_hash_calc(fp) == files[file]:
+                    hash = files[file]
+                    if packet_is_present and self.file_is_present(package, file, hash):
                         continue
 
-                    packname = packet
+                    packname = package
                     action = Action.install
                     src = file
                     crc = files[file]
@@ -349,38 +372,41 @@ class Manager(object):
 
         elif action == Action.update:
             self.logger.info('Обработка данных на обновление пакетов')
-            for packet in seq:
-                if self.local_index[packet]['phash'] == self.remote_index[packet]['phash']:
-                    continue
+            for package in seq:
+                self.logger.info('- {}'.format(package))
+                if self.local_index.get(package, None) is None:
+                    self.local_index[package] = {'hash': '', 'files': {}}
 
-                local_files = self.local_index[packet]['files']
-                remote_files = self.remote_index[packet]['files']
+                if self.full or not self.local_index[package]['phash'] == self.remote_index[package]['phash']:
 
-                install, update, delete = self.get_lists_difference(local_files.keys(), remote_files.keys())
+                    local_files = self.local_index[package]['files']
+                    remote_files = self.remote_index[package]['files']
 
-                for data in zip((Action.install, Action.update, Action.delete), (install, update, delete)):
-                    act, lst = data
+                    install, update, delete = self.get_lists_difference(local_files.keys(), remote_files.keys())
 
-                    fcount = len(lst)
+                    for act, lst in zip((Action.install, Action.update, Action.delete), (install, update, delete)):
+                        if not len(lst):
+                            continue
 
-                    if fcount and act == Action.install:
-                        for file in lst:
-                            yield packet, act, file, remote_files[file]
+                        if act == Action.delete:
+                            for file in lst:
+                                yield package, act, file, None
 
-                    elif fcount and act == Action.delete:
-                        for file in lst:
-                            yield packet, act, file, None
+                        else:
+                            for file in lst:
+                                if act == Action.update and local_files[file] == remote_files[file]:
+                                    continue
 
-                    elif fcount:
-                        for file in lst:
-                            if not local_files[file] == remote_files[file]:
-                                yield packet, act, file, remote_files[file]
+                                hash = remote_files[file]
+
+                                if not self.file_is_present(package, file, hash):
+                                    yield package, act, file, hash
 
         elif action == Action.delete:
             self.logger.info('Обработка данных на удаление пакетов')
-            for packet in seq:
-                # yield packet, Action.delete, None, None
-                yield packet
+            for package in seq:
+                self.logger.info('- {}'.format(package))
+                yield package
 
         else:
             raise TypeError('Тип задачи неопределен')
@@ -405,7 +431,7 @@ class Manager(object):
                     task.dst = None
                 else:
                     task.src = os.path.join(self.disp.repopath, packname, src)  # путь файла-источника для получения
-                    task.dst = os.path.join(self.buffer, packname, src)
+                    task.dst = os.path.realpath(os.path.join(self.buffer, packname, src))
                 task.crc = crc
 
                 yield task
@@ -430,7 +456,7 @@ class Manager(object):
 
         for task in gen_task:
             main_queue.put(task)
-
+        self.logger.debug('Запущена очередь загрузки файлов')
         main_queue.join()  # ожидаем окончания обработки очереди
 
         while True:
@@ -442,39 +468,39 @@ class Manager(object):
                 self.logger.error(exc)
                 error = True
         if error:
-            raise DownloadPacketError
+            raise DownloadPacketError('Ошибка при загрузке пакетов из репозитория')
 
     def install_packets(self):
         '''Копирование пакетов из буфера в папку установки'''
-        for packet in self.buffer_content():
-            src = os.path.join(self.buffer, packet)
+        for package in self.buffer_content():  #todo: заменить вызовом функции copy_package()
+            src = os.path.join(self.buffer, package)
 
-            try:
-                for top, _, files in os.walk(src, topdown=False):
-                    for file in files:
-                        s = os.path.join(top, file)
-                        d = os.path.join(self.eiispath, os.path.relpath(s, self.buffer))
+            # try:
+            for top, _, files in os.walk(src, topdown=False):
+                for file in files:
+                    s = os.path.join(top, file)
+                    d = os.path.join(self.eiispath, os.path.relpath(s, self.buffer))
+                    try:
+                        shutil.copyfile(s, d)
+                    except FileNotFoundError:  # нет директории в месте назначения
                         try:
-                            shutil.copyfile(s, d)
-                        except FileNotFoundError:  # нет директории в месте назначения
                             os.makedirs(os.path.dirname(d), exist_ok=True)
+                        except PermissionError:
+                            raise InstallPermissionError(package)
+                        else:
                             shutil.copyfile(s, d)
 
-                # создание ярлыка
-                if NOLINKS:
-                    self.logger.debug('не создан ярлык для пакета {}'.format(packet))
-                else:
-                    title, exe_file_path = self._get_link_data(packet)
-                    self.create_shortcut(title, exe_file_path)
+                # создание ярлыка -- ??????
+                # if NOLINKS:
+                #     self.logger.debug('не создан ярлык для пакета {}'.format(package))
+                # else:
+                #     title, exe_file_path = self._get_link_data(package)
+                #     self.create_shortcut(title, exe_file_path)
 
-            except LinkUpdateError as err:
-                self.logger.debug('ошибка создания ярлыка для {}: {}'.format(packet, err))
-
-            except Exception as err:
-                self.logger.error('Ошибка установки пакета {}'.format(packet))
-                raise PacketInstallError(err)
-            else:
-                self.logger.info(' - {} обработан'.format(packet))
+            # except LinkUpdateError as err:
+            #     self.logger.debug('ошибка создания ярлыка для {}: {}'.format(package, err))
+            # else:
+            self.logger.info(' - {} обработан'.format(package))
 
     def update_links(self):
         for packet in self.get_installed_packets():
@@ -490,33 +516,27 @@ class Manager(object):
 
         :param
         """
-        # if NOLINKS:
-        #     raise LinkUpdateError('Ошибка создания ярлыка - отсутствует библиотека win32')
+        if NOLINKS:
+            raise LinkUpdateError('Ошибка создания ярлыка - отсутствует библиотека win32')
 
         if not exe_file_path:
             raise LinkUpdateError('недостаточно данных для создания ярлыка для {}'.format(title))
 
-        lnpath = os.path.join(self.desktop, title + '.lnk')
-        # target = icon = exe_file_path
         workdir = os.path.dirname(exe_file_path)
-        # shell = Dispatch('WScript.Shell')
-
-        # shortcut = shell.CreateShortCut(lnpath)
-        # shortcut.Targetpath = target
-        # shortcut.WorkingDirectory = workdir
-        # shortcut.IconLocation = icon
-        # shortcut.save()
-
         lnpath = os.path.join(winshell.desktop(), '{}.lnk'.format(title))
 
         try:
+            pythoncom.CoInitialize()  # для работы в threads
             with winshell.shortcut(lnpath) as lp:
+                if lp.path == exe_file_path:
+                    return
                 lp.path = exe_file_path
-                lp.description = 'Зупуск подсистемы {} ЕИИС Соцстрах РФ'
+                lp.description = 'Запуск подсистемы "{}" ЕИИС Соцстрах РФ'
                 lp.working_directory = workdir
                 lp.write()
+                self.logger.debug('Создан ярлык: {}'.format(lnpath))
         except Exception as err:
-            raise LinkUpdateError('Ошибка создания ярлыка - отсутствует библиотека win32: {}'.format(err))
+            raise LinkUpdateError('Ошибка создания ярлыка: {}'.format(err))
 
     def remove_shortcut(self, packet):
         title, _ = self._get_link_data(packet)
@@ -563,6 +583,14 @@ class Manager(object):
         self.logger.debug('{}: tempdir: {}'.format(self, self.tempdir.name))
         self.logger.debug('{}: task_k: {}'.format(self, self.task_queue_k))
         self.logger.debug('{}: purge: {}'.format(self, self.purge))
+
+    def file_is_present(self, package, file, hash):
+        for path in (self.eiispath, self.buffer):
+            fp = os.path.join(path, package, file)
+            if os.path.exists(fp) and file_hash_calc(fp) == hash:
+                return True
+
+        return False
 
 
 class Worker(threading.Thread):
@@ -613,11 +641,11 @@ class Worker(threading.Thread):
                         self.queue.put(task)
                 else:
                     try:
-                        self.dispatcher.move(fp, task.dst)
                         self.logger.debug('{}<task-{}> move {} -> {}'.format(self, task_id, fp, task.dst ))
-                    except IOError:
-                        self.exceptions.put('Ошибка переноса в буфер файла "{}" из пакета "{}"'.format(
-                            os.path.basename(task.src), task.packetname))
+                        self.dispatcher.move(fp, task.dst)
+                    except IOError as err:
+                        self.exceptions.put('{}<task-{}> Ошибка переноса в буфер файла "{}" из пакета "{}": {}'.format(
+                            self, task_id, os.path.basename(task.src), task.packetname, err))
 
             self.queue.task_done()
 
@@ -627,7 +655,7 @@ class Worker(threading.Thread):
         except FileNotFoundError:
             pass
         except (PermissionError) as err:
-            #  err to log
+            self.logger.debug('ошибка при удалении файла: {}: {}'.format(fpath, err))
             import stat
             if not os.access(fpath, os.W_OK):
                 os.chmod(fpath, stat.S_IWUSR)
@@ -635,4 +663,4 @@ class Worker(threading.Thread):
                 try:
                     os.unlink(fpath)
                 except Exception:
-                    pass
+                    self.logger.debug('ошибка {}: файл {} не удален'.format(err, fpath))
