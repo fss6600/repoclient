@@ -53,7 +53,7 @@ def get_stdout_logger() -> logging.Logger:
     return logger
 
 
-def copy_package(src, dst):
+def copy_package(src, dst):  #todo: поместить в основной класс Менеджера
     for top, _, files in os.walk(src, topdown=False):
         for file in files:
             s = os.path.join(top, file)
@@ -347,11 +347,15 @@ class Manager(object):
 
     def claim_packet(self, packet_name) -> bool:
         status = self.get_local_packet_status(packet_name)
+
         if status == Status.removed:
             pack_new = os.path.join(self.eiispath, packet_name)
             pack_old = '{}.removed'.format(pack_new)
             shutil.move(pack_old, pack_new)
-        return self.local_packet_exists(packet_name)
+
+        res = self.local_packet_exists(packet_name)
+        self.logger.debug('Проверка на наличие уже установленного пакета: {}'.format(res))
+        return res
 
     def parse_data_by_action_gen(self, seq, action):
         ''''''
@@ -359,19 +363,18 @@ class Manager(object):
             self.logger.info('Обработка данных на установку пакетов:')
             for package in seq:
                 self.logger.info('- {}'.format(package))
-                packet_is_present = self.claim_packet(package)
+                self.claim_packet(package)
                 files = self.remote_index[package]['files']
+
                 for file in files:
                     hash = files[file]
-                    if packet_is_present and self.file_is_present(package, file, hash):
-                        continue
 
-                    packname = package
-                    action = Action.install
-                    src = file
-                    crc = files[file]
-
-                    yield packname, action, src, crc
+                    if not self.file_is_present(package, file, hash):
+                        packname = package
+                        action = Action.install
+                        src = file
+                        crc = hash
+                        yield packname, action, src, crc
 
         elif action == Action.update:
             self.logger.info('Обработка данных на обновление пакетов')
@@ -468,7 +471,7 @@ class Manager(object):
 
             for worker in workers:  # стартуем пчелок
                 worker.start()
-
+            # todo: добавить обработку очередей в цикл While
             main_queue.join()  # ожидаем окончания обработки очереди
             stopper.set()
 
@@ -481,7 +484,8 @@ class Manager(object):
                     self.logger.error(exc)
                     error = True
             if error:
-                raise DownloadPacketError('Ошибка при загрузке пакетов из репозитория')
+                raise DownloadPacketError('Ошибка при загрузке пакетов из репозитория. Пакеты не будут установлены '
+                                          'или обновлены')
 
     def install_packets(self):
         '''Копирование пакетов из буфера в папку установки'''
@@ -601,6 +605,7 @@ class Manager(object):
         for path in (self.eiispath, self.buffer):
             fp = os.path.join(path, package, file)
             if os.path.exists(fp) and file_hash_calc(fp) == hash:
+                self.logger.debug('пропуск - файл уже присутствует: {}'.format(fp))
                 return True
 
         return False
@@ -660,7 +665,7 @@ class Worker(threading.Thread):
                         else:
                             try:
                                 self.logger.debug('{}<task-{}> move {} -> {}'.format(self, task_id, fp, task.dst ))
-                                self.dispatcher.move(fp, task.dst)
+                                self.dispatcher.move(fp, task.dst)  # move to buffer
                             except IOError as err:
                                 self.exceptions.put('{}<task-{}> Ошибка переноса в буфер файла "{}" из пакета "{}": {}'.format(
                                     self, task_id, os.path.basename(task.src), task.packetname, err))

@@ -14,11 +14,12 @@ from eiisclient.core.manage import Manager, copy_package
 from eiisclient.core.utils import get_config_data, hash_calc, to_json
 from eiisclient.gui import main
 
-def move_packages(src, dst):
+def move_packages(src, dst, logger: logging.Logger):
     try:
         for packname in os.listdir(src):
             s = os.path.join(src, packname)
             d = os.path.join(dst, packname)
+            logger.debug('move from: {} -> {}'.format(s, d))
             copy_package(s, d)
     except Exception as err:
         raise CopyPackageError from err
@@ -123,6 +124,7 @@ class MainFrame(main.fmMain):
             self.logger.error(err)
 
         finally:
+            self.update_packet_list()
             self.manager.deactivate()
 
             self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=True)
@@ -159,8 +161,10 @@ class MainFrame(main.fmMain):
                                    threads=self.threads,
                                    full=full
                                    )
+            self.logger.debug('{}: инициализирован'.format(self.manager))
         else:
             self.manager = None
+            self.logger.debug('{}: инициализирован'.format(None))
 
         self.update_packet_list()
         self.update_info_view()
@@ -169,8 +173,23 @@ class MainFrame(main.fmMain):
         self.update_packet_list()
         self.update_info_view()
 
+    def log_append(self, message, level=None):
+
+        if level == 'DEBUG':
+            color = wx.BLUE
+        elif level == 'WARNING':
+            color = wx.RED
+        elif level == 'ERROR':
+            color = wx.RED
+        else:
+            color = wx.NullColour
+
+        self.wxLogView.SetDefaultStyle(wx.TextAttr(color))
+        self.wxLogView.AppendText(message)
+
     def update_packet_list(self):
         ''''''
+        self.wxPacketList.Freeze()
         self.wxPacketList.Clear()
 
         if self.manager is None:
@@ -198,6 +217,7 @@ class MainFrame(main.fmMain):
         active_list = ['[!] {}'.format(i) if i in abandoned else i for i in active_list]
 
         self.wxPacketList.SetCheckedStrings(active_list)  # проставить активные подсистемы
+        self.wxPacketList.Thaw()
 
     def update_info_view(self):
         abandoned = [n for n in self.wxPacketList.GetCheckedStrings() if n.startswith('[!]')]
@@ -221,22 +241,23 @@ class MainFrame(main.fmMain):
         except IndexError:
             pass
         logger.setLevel(level)
-        handler = WxLogHandler(self.wxLogView)
+        handler = WxLogHandler(self)
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         return logger
 
 
 class WxLogHandler(logging.StreamHandler):
-    def __init__(self, txtctrl=None):
+    def __init__(self, obj=None):
         super(WxLogHandler, self).__init__()
-        self.txtctrl = txtctrl
+        self.obj = obj
         self.level = logging.DEBUG
 
     def emit(self, record):
         try:
-            msg = '{}\n'.format(self.format(record))
-            wx.CallAfter(self.txtctrl.AppendText, msg)
+            msg = ('{}\n'.format(self.format(record)), record.levelname)
+            wx.CallAfter(self.obj.log_append, *msg)
+
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception:
@@ -302,7 +323,7 @@ class ConfigFrame(main.fmConfig):
 
                 if ans == wx.ID_YES:
                     try:
-                        move_packages(self.main_frame.eiispath, self.config['eiispath'])
+                        move_packages(self.main_frame.eiispath, self.config['eiispath'], self.main_frame.logger)
                     except CopyPackageError:
                         self.main_frame.logger.warning('Не удалось скопировать уже установленные подсистемы.')
 

@@ -104,7 +104,7 @@ class fmMain ( wx.Frame ):
         self.m_panel6 = wx.Panel( self.m_splitter2, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
         bSizer11 = wx.BoxSizer( wx.VERTICAL )
         
-        self.wxLogView = wx.TextCtrl( self.m_panel6, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, wx.HSCROLL|wx.TE_MULTILINE|wx.TE_NOHIDESEL|wx.TE_READONLY|wx.TE_RICH2 )
+        self.wxLogView = wx.TextCtrl( self.m_panel6, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, wx.HSCROLL|wx.TE_MULTILINE|wx.TE_NOHIDESEL|wx.TE_READONLY|wx.TE_RICH )
         bSizer11.Add( self.wxLogView, 1, wx.ALL|wx.EXPAND, 5 )
         
         bSizer12 = wx.BoxSizer( wx.HORIZONTAL )

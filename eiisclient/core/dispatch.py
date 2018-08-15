@@ -67,9 +67,9 @@ class BaseDispatcher(object):
                 import stat
                 if not os.access(dst, os.W_OK):
                     os.chmod(dst, stat.S_IWUSR)
-                    time.sleep(0.2)
+                    time.sleep(0.3)
                 os.unlink(dst)
-                time.sleep(0.2)
+                time.sleep(0.3)
                 shutil.copyfile(src, dst)
             except Exception as err:
                 raise IOError(err)
