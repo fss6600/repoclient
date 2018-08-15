@@ -23,7 +23,7 @@ class BaseDispatcher(object):
         self.repo = None
         self.logger = kwargs.get('logger')
         self.encode = kwargs.get('encode', DEFAULT_ENCODING)
-        self.tempdir = kwargs.get('tempdir', None) or get_temp_dir(prefix='disp_')
+        self.tempdir = get_temp_dir(prefix='disp_')
 
     @property
     def repopath(self):
@@ -242,6 +242,7 @@ class FTPDispatcher(BaseDispatcher):
         return '{}'.format(path).replace('\\', '/')
 
     def close(self):
+        self.tempdir.cleanup()
         if self.ftp is not None:
             try:
                 self.ftp.quit()

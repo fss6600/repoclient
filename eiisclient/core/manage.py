@@ -462,8 +462,7 @@ class Manager(object):
             workers = []
 
             for i in range(self.threads):
-                dispatcher = get_dispatcher(self.repo, encode=self.encode, ftpencode=self.ftpencode,
-                             logger=self.logger, tempdir=self.tempdir)
+                dispatcher = get_dispatcher(self.repo, encode=self.encode, ftpencode=self.ftpencode, logger=self.logger)
                 worker = Worker(main_queue, exc_queue, stopper, dispatcher, logger=self.logger)
                 worker.setName('{}'.format(worker))
                 worker.setDaemon(True)
