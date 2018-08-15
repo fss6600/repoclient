@@ -1,21 +1,18 @@
 # -*- coding: utf-8 -*-
-import hashlib
 import logging
 import os
 import shutil
 import sys
 import threading
-from time import sleep
 
 import wx
 
+from eiisclient import (CONFIGFILENAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, __author__, __division__,
+                        __email__, __version__)
 from eiisclient.core.exceptions import CopyPackageError, PacketDeleteError
-from eiisclient.gui import main
-from eiisclient import __version__, __author__, __email__, __division__, CONFIGFILENAME
-from eiisclient import DEFAULT_ENCODING, WORKDIR, DEFAULT_INSTALL_PATH
-from eiisclient.core.utils import to_json, from_json, get_config_data, hash_calc
 from eiisclient.core.manage import Manager, copy_package
-
+from eiisclient.core.utils import get_config_data, hash_calc, to_json
+from eiisclient.gui import main
 
 def move_packages(src, dst):
     try:
@@ -28,7 +25,6 @@ def move_packages(src, dst):
 
 
 class MainFrame(main.fmMain):
-
     def __init__(self):
         super(MainFrame, self).__init__(None)
 
@@ -121,7 +117,7 @@ class MainFrame(main.fmMain):
 
         try:
             self.manager.activate()
-            self.log_append('Начинаем...\n')
+            self.logger.info('Начинаем...')
             self.manager.start(installed, selected)
         except Exception as err:
             self.logger.error(err)
@@ -140,7 +136,7 @@ class MainFrame(main.fmMain):
             self.btFull.Check(False)
             self.on_btFull(None)
 
-            self.log_append('Закончили...\n')
+            self.logger.info('Закончили...')
 
     def init(self, full=False):
         """"""
@@ -172,9 +168,6 @@ class MainFrame(main.fmMain):
     def _init_gui(self):
         self.update_packet_list()
         self.update_info_view()
-
-    def log_append(self, data):
-        self.wxLogView.AppendText(data)
 
     def update_packet_list(self):
         ''''''
@@ -228,10 +221,26 @@ class MainFrame(main.fmMain):
         except IndexError:
             pass
         logger.setLevel(level)
-        handler = logging.StreamHandler(stream=Stream(self))
+        handler = WxLogHandler(self.wxLogView)
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         return logger
+
+
+class WxLogHandler(logging.StreamHandler):
+    def __init__(self, txtctrl=None):
+        super(WxLogHandler, self).__init__()
+        self.txtctrl = txtctrl
+        self.level = logging.DEBUG
+
+    def emit(self, record):
+        try:
+            msg = '{}\n'.format(self.format(record))
+            wx.CallAfter(self.txtctrl.AppendText, msg)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception:
+            self.handleError(record)
 
 
 class ConfigFrame(main.fmConfig):
@@ -311,11 +320,3 @@ class ConfigFrame(main.fmConfig):
 
     def Cancel(self, event):
         self.Destroy()
-
-
-class Stream():
-    def __init__(self, obj: MainFrame):
-        self.obj = obj
-
-    def write(self, record):
-        self.obj.wxLogView.AppendText(record)

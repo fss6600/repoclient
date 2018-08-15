@@ -626,11 +626,11 @@ class Worker(threading.Thread):
         try:
             while True:
                 if self.stopper.is_set():
-                    # self.logger.debug('{}: обнаружен стоп-флаг. выходим'.format(self))
+                    self.logger.debug('{}: обнаружен стоп-флаг. выходим'.format(self))
                     break
 
                 if self.dispatcher.repo_is_busy():
-                    # self.logger.debug('{}: репозиторий заблокирован. выходим'.format(self))
+                    self.logger.debug('{}: репозиторий заблокирован. выходим'.format(self))
                     break
 
                 try:
@@ -639,7 +639,7 @@ class Worker(threading.Thread):
                     pass
                 else:
                     task_id = id(task)
-                    # self.logger.debug('{}<task-{}> ({}|{}|{})'.format(self, task_id, task.packetname, task.action, task.src))
+                    self.logger.debug('{}<task-{}> ({}|{}|{})'.format(self, task_id, task.packetname, task.action, task.src))
 
                     if task.action == Action.delete:
                         self.remove_file(task.src)
@@ -650,7 +650,7 @@ class Worker(threading.Thread):
                         if not hash_sum == task.crc:
                             self.files_faulted[task.src] += 1
                             fault_count = self.files_faulted.get(task.src)
-                            # self.logger.debug('{}<task-{}> <{} != {}> [{}]'.format(self, task_id, hash_sum, task.crc, fault_count))
+                            self.logger.debug('{}<task-{}> <{} != {}> [{}]'.format(self, task_id, hash_sum, task.crc, fault_count))
                             if fault_count is not None and fault_count > self.max_repeat - 1:
                                 self.exceptions.put('Неверная контрольная сумма файла "{}" из пакета "{}"'.format(
                                     os.path.basename(task.src), task.packetname))
@@ -667,7 +667,7 @@ class Worker(threading.Thread):
 
                     self.queue.task_done()
         finally:
-            # self.logger.debug('{}: работу завершил'.format(self))
+            self.logger.debug('{}: работу завершил'.format(self))
             self.dispatcher.close()
 
     def remove_file(self, fpath):
