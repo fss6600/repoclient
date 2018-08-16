@@ -27,21 +27,12 @@ from eiisclient.core.dispatch import get_dispatcher, BaseDispatcher
 from eiisclient.core.eiisreestr import REESTR
 from eiisclient.core.exceptions import (
     RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, DownloadPacketError,
-    PacketDeleteError, LinkUpdateError)
+    PacketDeleteError, LinkUpdateError, CopyPackageError)
 from eiisclient.core.utils import get_temp_dir, file_hash_calc, from_json, to_json
 from eiisclient import __version__
 
 CONFIGFILE = os.path.normpath(os.path.join(WORKDIR, 'config.json'))
 INDEXFILE = os.path.normpath(os.path.join(WORKDIR, 'index.json'))
-
-
-class Action(Enum):
-    ''''''
-    install, update, delete = range(3)
-
-
-class Status(Enum):
-    installed, removed, purged = range(3)
 
 
 def get_stdout_logger() -> logging.Logger:
@@ -53,21 +44,13 @@ def get_stdout_logger() -> logging.Logger:
     return logger
 
 
-def copy_package(src, dst):  # todo: поместить в основной класс Менеджера
-    for top, _, files in os.walk(src, topdown=False):
-        for file in files:
-            s = os.path.join(top, file)
-            d = os.path.join(os.path.dirname(dst), os.path.relpath(s, os.path.dirname(src)))
-            try:
-                shutil.copyfile(s, d)
-            except FileNotFoundError:  # нет директории в месте назначения
-                try:
-                    os.makedirs(os.path.dirname(d), exist_ok=True)
-                except PermissionError:
-                    raise
-                else:
-                    shutil.copyfile(s, d)
-                    pass
+class Action(Enum):
+    ''''''
+    install, update, delete = range(3)
+
+
+class Status(Enum):
+    installed, removed, purged = range(3)
 
 
 class Manager(object):
@@ -489,7 +472,7 @@ class Manager(object):
 
     def install_packets(self, selected: Iterable):
         '''Копирование пакетов из буфера в папку установки'''
-        for package in self.buffer_content():  # todo: заменить вызовом функции copy_package()
+        for package in self.buffer_content():
             if not package in selected:  # возможно пакет остался с прошлой неудачной установки
                 self.logger.debug('{} есть в буфере, но нет в списке устанавливаемых пакетов - пропуск'.format(package))
                 continue
@@ -497,27 +480,11 @@ class Manager(object):
             src = os.path.join(self.buffer, package)
             dst = os.path.join(self.eiispath, package)
 
-            copy_package(src, dst)
+            self.copy_package(src, dst)
             self.logger.debug('{} скопирован в {}'.format(package, dst))
 
             shutil.rmtree(src)
             self.logger.debug('{} удален из буфера'.format(package))
-
-            # # try:
-            # for top, _, files in os.walk(src, topdown=False):
-            #     for file in files:
-            #         s = os.path.join(top, file)
-            #         d = os.path.join(self.eiispath, os.path.relpath(s, self.buffer))
-            #         try:
-            #             shutil.copyfile(s, d)
-            #         except FileNotFoundError:  # нет директории в месте назначения
-            #             try:
-            #                 os.makedirs(os.path.dirname(d), exist_ok=True)
-            #             except PermissionError:
-            #                 raise InstallPermissionError(package)
-            #             else:
-            #                 shutil.copyfile(s, d)
-
             self.logger.info(' - {} обработан'.format(package))
 
     def update_links(self):
@@ -618,6 +585,33 @@ class Manager(object):
                 return True
 
         return False
+
+    @staticmethod
+    def copy_package(src, dst):
+        for top, _, files in os.walk(src, topdown=False):
+            for file in files:
+                s = os.path.join(top, file)
+                d = os.path.join(os.path.dirname(dst), os.path.relpath(s, os.path.dirname(src)))
+                try:
+                    shutil.copyfile(s, d)
+                except FileNotFoundError:  # нет директории в месте назначения
+                    try:
+                        os.makedirs(os.path.dirname(d), exist_ok=True)
+                    except PermissionError:
+                        raise
+                    else:
+                        shutil.copyfile(s, d)
+                        pass
+
+    def move_packages(self, src, dst):
+        try:
+            for packname in os.listdir(src):
+                s = os.path.join(src, packname)
+                d = os.path.join(dst, packname)
+                self.logger.debug('move from: {} -> {}'.format(s, d))
+                self.copy_package(s, d)
+        except Exception as err:
+            raise CopyPackageError from err
 
 
 class Worker(threading.Thread):

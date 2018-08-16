@@ -10,19 +10,10 @@ import wx
 from eiisclient import (CONFIGFILENAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, __author__, __division__,
                         __email__, __version__)
 from eiisclient.core.exceptions import CopyPackageError, PacketDeleteError
-from eiisclient.core.manage import Manager, copy_package
+from eiisclient.core.manage import Manager
 from eiisclient.core.utils import get_config_data, hash_calc, to_json
 from eiisclient.gui import main
 
-def move_packages(src, dst, logger: logging.Logger):
-    try:
-        for packname in os.listdir(src):
-            s = os.path.join(src, packname)
-            d = os.path.join(dst, packname)
-            logger.debug('move from: {} -> {}'.format(s, d))
-            copy_package(s, d)
-    except Exception as err:
-        raise CopyPackageError from err
 
 
 class MainFrame(main.fmMain):
@@ -346,7 +337,7 @@ class ConfigFrame(main.fmConfig):
 
                 if ans == wx.ID_YES:
                     try:
-                        move_packages(self.main_frame.eiispath, self.config['eiispath'], self.main_frame.logger)
+                        self.main_frame.manager.move_packages(self.main_frame.eiispath, self.config['eiispath'])
                     except CopyPackageError:
                         self.main_frame.logger.warning('Не удалось скопировать подсистемы в {}.'.format(
                             self.config['eiispath']))
