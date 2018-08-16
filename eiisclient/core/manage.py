@@ -26,8 +26,8 @@ from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, SELECTED
 from eiisclient.core.dispatch import get_dispatcher, BaseDispatcher
 from eiisclient.core.eiisreestr import REESTR
 from eiisclient.core.exceptions import (
-    RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, PacketInstallError, DownloadPacketError,
-    PacketDeleteError, LinkUpdateError, NoUpdates, InstallPermissionError)
+    RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, DownloadPacketError,
+    PacketDeleteError, LinkUpdateError)
 from eiisclient.core.utils import get_temp_dir, file_hash_calc, from_json, to_json
 from eiisclient import __version__
 
@@ -53,7 +53,7 @@ def get_stdout_logger() -> logging.Logger:
     return logger
 
 
-def copy_package(src, dst):  #todo: поместить в основной класс Менеджера
+def copy_package(src, dst):  # todo: поместить в основной класс Менеджера
     for top, _, files in os.walk(src, topdown=False):
         for file in files:
             s = os.path.join(top, file)
@@ -247,7 +247,8 @@ class Manager(object):
     def get_selected_packets(self) -> tuple:
         try:
             with open(self.selected_packets_list_file) as fp:
-                return tuple(line.strip() for line in fp.readlines() if not any([line.startswith('#'), line.rstrip() == '']))
+                return tuple(
+                    line.strip() for line in fp.readlines() if not any([line.startswith('#'), line.rstrip() == '']))
         except FileNotFoundError:
             return tuple()
 
@@ -300,7 +301,7 @@ class Manager(object):
                 raise PacketDeleteError(err)
 
     def get_remote_index(self) -> dict:
-        self.check_repo() # ???
+        self.check_repo()  # ???
 
         if self.activated:
             try:
@@ -399,7 +400,8 @@ class Manager(object):
                         else:
                             for file in lst:
                                 dst = os.path.join(self.eiispath, package, file)
-                                if act == Action.update and os.path.exists(dst) and local_files[file] == remote_files[file]:
+                                if act == Action.update and os.path.exists(dst) and local_files[file] == remote_files[
+                                    file]:
                                     continue
 
                                 hash = remote_files[file]
@@ -487,7 +489,7 @@ class Manager(object):
 
     def install_packets(self, selected: Iterable):
         '''Копирование пакетов из буфера в папку установки'''
-        for package in self.buffer_content():  #todo: заменить вызовом функции copy_package()
+        for package in self.buffer_content():  # todo: заменить вызовом функции copy_package()
             if not package in selected:  # возможно пакет остался с прошлой неудачной установки
                 self.logger.debug('{} есть в буфере, но нет в списке устанавливаемых пакетов - пропуск'.format(package))
                 continue
@@ -622,7 +624,7 @@ class Worker(threading.Thread):
     files_faulted = Counter()
     max_repeat = 3
 
-    def __init__(self, queue: Queue, exc_queue: Queue, stopper: threading.Event,  dispatcher: BaseDispatcher,
+    def __init__(self, queue: Queue, exc_queue: Queue, stopper: threading.Event, dispatcher: BaseDispatcher,
                  logger=None, *args, **kwargs):
         super(Worker, self).__init__(*args, **kwargs)
         self.queue = queue
@@ -651,7 +653,8 @@ class Worker(threading.Thread):
                     pass
                 else:
                     task_id = id(task)
-                    self.logger.debug('{}<task-{}> ({}|{}|{})'.format(self, task_id, task.packetname, task.action, task.src))
+                    self.logger.debug(
+                        '{}<task-{}> ({}|{}|{})'.format(self, task_id, task.packetname, task.action, task.src))
 
                     if task.action == Action.delete:
                         self.remove_file(task.src)
@@ -662,7 +665,8 @@ class Worker(threading.Thread):
                         if not hash_sum == task.crc:
                             self.files_faulted[task.src] += 1
                             fault_count = self.files_faulted.get(task.src)
-                            self.logger.debug('{}<task-{}> <{} != {}> [{}]'.format(self, task_id, hash_sum, task.crc, fault_count))
+                            self.logger.debug(
+                                '{}<task-{}> <{} != {}> [{}]'.format(self, task_id, hash_sum, task.crc, fault_count))
                             if fault_count is not None and fault_count > self.max_repeat - 1:
                                 self.exceptions.put('Неверная контрольная сумма файла "{}" из пакета "{}"'.format(
                                     os.path.basename(task.src), task.packetname))
@@ -671,11 +675,12 @@ class Worker(threading.Thread):
                                 self.queue.put(task)
                         else:
                             try:
-                                self.logger.debug('{}<task-{}> move {} -> {}'.format(self, task_id, fp, task.dst ))
+                                self.logger.debug('{}<task-{}> move {} -> {}'.format(self, task_id, fp, task.dst))
                                 self.dispatcher.move(fp, task.dst)  # move to buffer
                             except IOError as err:
-                                self.exceptions.put('{}<task-{}> Ошибка переноса в буфер файла "{}" из пакета "{}": {}'.format(
-                                    self, task_id, os.path.basename(task.src), task.packetname, err))
+                                self.exceptions.put(
+                                    '{}<task-{}> Ошибка переноса в буфер файла "{}" из пакета "{}": {}'.format(
+                                        self, task_id, os.path.basename(task.src), task.packetname, err))
 
                     self.queue.task_done()
         finally:

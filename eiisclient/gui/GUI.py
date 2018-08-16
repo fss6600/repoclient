@@ -68,7 +68,6 @@ class MainFrame(main.fmMain):
 
     def on_exit(self, event):
         ''''''
-        # todo  добавить дополнителльную обработку перед завершением
         self.Close(True)
 
     def on_update( self, event ):
@@ -130,6 +129,7 @@ class MainFrame(main.fmMain):
         installed = self.manager.get_installed_packets()
         selected = self.get_selected_packages()
 
+        # деактивация элементов интерфейса от ненужных нажатий
         self.wxPacketList.Disable()
         self.btUpdate.Disable()
         self.btRefresh.Disable()
@@ -150,6 +150,7 @@ class MainFrame(main.fmMain):
             self.update_packet_list()
             self.manager.deactivate()
 
+            # возврат элементов в изначальное состояние
             self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=True)
             self.menuService.Enable(id=self.menuConfig.GetId(), enable=True)
             self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=True)
@@ -187,10 +188,9 @@ class MainFrame(main.fmMain):
             self.logger.debug('{}: инициализирован'.format(self.manager))
         else:
             self.manager = None
-            self.logger.debug('{}: инициализирован'.format(None))
+            self.logger.debug('{}: не инициализирован!'.format(None))
 
-        self.update_packet_list()
-        self.update_info_view()
+        self._init_gui()
 
     def _init_gui(self):
         self.update_packet_list()
@@ -211,7 +211,7 @@ class MainFrame(main.fmMain):
         self.wxLogView.AppendText(message)
 
     def update_packet_list(self):
-        ''''''
+        """"""
         self.wxPacketList.Freeze()
         self.wxPacketList.Clear()
 
@@ -291,7 +291,7 @@ class WxLogHandler(logging.StreamHandler):
 
 
 class ConfigFrame(main.fmConfig):
-
+    """"""
     def __init__(self, main_frame: MainFrame, *args, **kwargs):
         self.main_frame = main_frame
         super(ConfigFrame, self).__init__(*args, **kwargs)
@@ -300,7 +300,7 @@ class ConfigFrame(main.fmConfig):
         self.config_hash = hash_calc(self.config)
 
         ##
-        self.wxRepoPath.Value = self.config.get('repopath', '')  # путь к репозитоию
+        self.wxRepoPath.Value = self.config.get('repopath', '')
 
         self.eiis_path_user = os.path.join(os.path.expandvars('%APPDATA%'), r'ЕИИС ФСС РФ')
         config_install_path = self.config.get('eiispath', DEFAULT_INSTALL_PATH)

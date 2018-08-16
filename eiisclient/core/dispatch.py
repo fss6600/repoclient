@@ -105,12 +105,6 @@ class BaseDispatcher(object):
         """"""
         self._clean_dir(path, onerror=True)
         shutil.rmtree(path)
-        # try:
-        #     shutil.rmtree(path)
-        # except OSError as err:
-        #     self.logger.debug('** ошибка удаления папки  {} - {}'.format(path, err))
-
-    # remove_eiis = remove_dir
 
     def write(self, fpath, data):
         """
@@ -139,6 +133,7 @@ class BaseDispatcher(object):
 
 class FileDispatcher(BaseDispatcher):
     ''''''
+
     def __init__(self, repo, *args, **kwargs):
         """"""
         super(FileDispatcher, self).__init__(*args, **kwargs)
@@ -156,14 +151,11 @@ class FileDispatcher(BaseDispatcher):
         """
         fname = os.path.basename(src)
         if dst is None:
-            dst =  os.path.join(self.tempdir.name, fname)
+            dst = os.path.join(self.tempdir.name, fname)
         elif not dst.endswith(fname):
             dst = os.path.join(dst, fname)
 
-        try:
-            shutil.copyfile(src, dst)
-        except IOError:
-            raise  # todo добавить свое исключение или обработку, запись в лог
+        shutil.copyfile(src, dst)
 
         return dst
 
@@ -185,12 +177,14 @@ class FileDispatcher(BaseDispatcher):
 
 class SMBDispatcher(FileDispatcher):
     ''''''
+
     def __repr__(self):
         return '<SMB Dispatcher-{}>'.format(id(self))
 
 
 class FTPDispatcher(BaseDispatcher):
     """FTP диспетчер"""
+
     def __init__(self, repo, *args, **kwargs):
         super(FTPDispatcher, self).__init__(*args, **kwargs)
 
@@ -262,7 +256,6 @@ class FTPDispatcher(BaseDispatcher):
             dst_path = dst
 
         src_path = self._sanitize_path(os.path.join(self.repo, src))
-        # dst_path = os.path.join(dst, fname)
 
         self._check_connection()
 
