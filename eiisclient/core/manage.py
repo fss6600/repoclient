@@ -132,7 +132,7 @@ class Manager(object):
                 self.logger.info('Нет пакетов для установки или обновления')
             else:
                 self.logger.info('Перенос пакетов из буфера в папку установки:')
-                self.install_packets()
+                self.install_packets(selected)
 
             # запись данных нового индекса и контрольной суммы
             if not os.path.exists(WORKDIR):
@@ -141,9 +141,6 @@ class Manager(object):
             with open(self.local_index_file, 'w') as fp_index, open(self.local_index_file_hash, 'w') as fp_hash:
                 fp_index.write(to_json(self.remote_index))
                 fp_hash.write(self.remote_index_hash)
-
-            # очистка буфера
-            self._clean_buffer()
 
             # обновление ярлыков на рабочем столе
             self.update_links()
@@ -380,7 +377,7 @@ class Manager(object):
             self.logger.info('Обработка данных на обновление пакетов')
             for package in seq:
                 self.logger.info('- {}'.format(package))
-                if self.local_index.get(package, None) is None:
+                if self.local_index.get(package, None) is None:  # первый запуск
                     self.local_index[package] = {'hash': '', 'files': {}}
 
                 if self.full or not self.local_index[package]['phash'] == self.remote_index[package]['phash']:
@@ -392,6 +389,7 @@ class Manager(object):
 
                     for act, lst in zip((Action.install, Action.update, Action.delete), (install, update, delete)):
                         if not len(lst):
+                            self.logger.debug('{}: action: {} список файлов пуст'.format(package, act))
                             continue
 
                         if act == Action.delete:
@@ -400,7 +398,8 @@ class Manager(object):
 
                         else:
                             for file in lst:
-                                if act == Action.update and local_files[file] == remote_files[file]:
+                                dst = os.path.join(self.eiispath, package, file)
+                                if act == Action.update and os.path.exists(dst) and local_files[file] == remote_files[file]:
                                     continue
 
                                 hash = remote_files[file]
@@ -486,36 +485,37 @@ class Manager(object):
                 raise DownloadPacketError('Ошибка при загрузке пакетов из репозитория. Пакеты не будут установлены '
                                           'или обновлены')
 
-    def install_packets(self):
+    def install_packets(self, selected: Iterable):
         '''Копирование пакетов из буфера в папку установки'''
         for package in self.buffer_content():  #todo: заменить вызовом функции copy_package()
+            if not package in selected:  # возможно пакет остался с прошлой неудачной установки
+                self.logger.debug('{} есть в буфере, но нет в списке устанавливаемых пакетов - пропуск'.format(package))
+                continue
+
             src = os.path.join(self.buffer, package)
+            dst = os.path.join(self.eiispath, package)
 
-            # try:
-            for top, _, files in os.walk(src, topdown=False):
-                for file in files:
-                    s = os.path.join(top, file)
-                    d = os.path.join(self.eiispath, os.path.relpath(s, self.buffer))
-                    try:
-                        shutil.copyfile(s, d)
-                    except FileNotFoundError:  # нет директории в месте назначения
-                        try:
-                            os.makedirs(os.path.dirname(d), exist_ok=True)
-                        except PermissionError:
-                            raise InstallPermissionError(package)
-                        else:
-                            shutil.copyfile(s, d)
+            copy_package(src, dst)
+            self.logger.debug('{} скопирован в {}'.format(package, dst))
 
-                # создание ярлыка -- ??????
-                # if NOLINKS:
-                #     self.logger.debug('не создан ярлык для пакета {}'.format(package))
-                # else:
-                #     title, exe_file_path = self._get_link_data(package)
-                #     self.create_shortcut(title, exe_file_path)
+            shutil.rmtree(src)
+            self.logger.debug('{} удален из буфера'.format(package))
 
-            # except LinkUpdateError as err:
-            #     self.logger.debug('ошибка создания ярлыка для {}: {}'.format(package, err))
-            # else:
+            # # try:
+            # for top, _, files in os.walk(src, topdown=False):
+            #     for file in files:
+            #         s = os.path.join(top, file)
+            #         d = os.path.join(self.eiispath, os.path.relpath(s, self.buffer))
+            #         try:
+            #             shutil.copyfile(s, d)
+            #         except FileNotFoundError:  # нет директории в месте назначения
+            #             try:
+            #                 os.makedirs(os.path.dirname(d), exist_ok=True)
+            #             except PermissionError:
+            #                 raise InstallPermissionError(package)
+            #             else:
+            #                 shutil.copyfile(s, d)
+
             self.logger.info(' - {} обработан'.format(package))
 
     def update_links(self):
@@ -566,11 +566,19 @@ class Manager(object):
     def _clean(self):
         self.tempdir.cleanup()
 
-    def _clean_buffer(self):
-        try:
-            shutil.rmtree(self.buffer)
-        except FileNotFoundError:
-            pass
+    def clean_buffer(self) -> bool:
+        done = True
+        packs = self.buffer_content()
+        if packs:
+            for pack in packs:
+                try:
+                    path = os.path.join(self.buffer, pack)
+                    shutil.rmtree(path)
+                except Exception:
+                    done = False
+                    self.logger.error('Ошибка при удалении пакета {} из буфера'.format(pack))
+
+        return done
 
     def _get_link_data(self, packet) -> tuple:
         try:

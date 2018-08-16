@@ -163,6 +163,9 @@ class fmMain ( wx.Frame ):
         self.menuitemPurge = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Удалить подсистемы", u"Удаление неиспользуемыз подсистем с компьютера", wx.ITEM_NORMAL )
         self.m_menu1.Append( self.menuitemPurge )
         
+        self.menuitemCleanBuffer = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Очистить буфер", wx.EmptyString, wx.ITEM_NORMAL )
+        self.m_menu1.Append( self.menuitemCleanBuffer )
+        
         self.menuService.AppendSubMenu( self.m_menu1, u"Очистка" )
         
         self.menuService.AppendSeparator()
@@ -200,6 +203,7 @@ class fmMain ( wx.Frame ):
         self.Bind( wx.EVT_MENU, self.on_exit, id = self.menuitemExit.GetId() )
         self.Bind( wx.EVT_MENU, self.on_config, id = self.menuConfig.GetId() )
         self.Bind( wx.EVT_MENU, self.on_purge, id = self.menuitemPurge.GetId() )
+        self.Bind( wx.EVT_MENU, self.on_clean_buffer, id = self.menuitemCleanBuffer.GetId() )
         self.Bind( wx.EVT_MENU, self.on_links_update, id = self.menuitemLinksUpdate.GetId() )
         self.Bind( wx.EVT_MENU, self.on_btFull, id = self.btFull.GetId() )
         self.Bind( wx.EVT_MENU, self.on_about, id = self.menuitemHelp.GetId() )
@@ -229,6 +233,9 @@ class fmMain ( wx.Frame ):
         pass
     
     def on_purge( self, event ):
+        pass
+    
+    def on_clean_buffer( self, event ):
         pass
     
     def on_links_update( self, event ):

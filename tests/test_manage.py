@@ -473,7 +473,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
 
         self.assertEqual(os.path.getsize(fn), 21548)
 
-        self.manager._clean_buffer()
+        self.manager.clean_buffer()
         self.assertTrue(self.manager.buffer_is_empty())
 
     def test_9_handle_files(self):

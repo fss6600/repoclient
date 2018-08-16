@@ -100,12 +100,17 @@ class MainFrame(main.fmMain):
             else:
                 self.logger.info('Очистка завершена')
 
+    def on_clean_buffer( self, event ):
+        res = self.manager.clean_buffer()
+        if res:
+            self.logger.info('Буфер очищен')
+
     def on_links_update( self, event ):
         self.manager.update_links()
 
     def run(self):
         installed = self.manager.get_installed_packets()
-        selected = self.wxPacketList.GetCheckedStrings()
+        selected = self.get_selected_packages()
 
         self.wxPacketList.Disable()
         self.btUpdate.Disable()
@@ -229,6 +234,9 @@ class MainFrame(main.fmMain):
                 self.wxInfoView.AppendToPage('<li>{}</li>'.format(name))
             self.wxInfoView.AppendToPage('<ul>')
 
+    def get_selected_packages(self):
+        return self.wxPacketList.GetCheckedStrings()
+
     def get_logger(self):
         logger = logging.getLogger(__name__)
         level = logging.INFO
@@ -312,27 +320,31 @@ class ConfigFrame(main.fmConfig):
         #  write to file if changed
         if not hash_calc(self.config) == self.config_hash:
             full = False
-            confile = os.path.join(WORKDIR, CONFIGFILENAME)
-            with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
-                fp.write(to_json(self.config))
 
             if not self.config['eiispath'] == self.main_frame.eiispath:
                 dlg = wx.MessageDialog(None, 'Скопировать существующие подсистемы по новому пути?',
-                                       '', wx.YES_NO | wx.ICON_QUESTION)
+                                       'Копирование пакетов', wx.YES_NO | wx.ICON_QUESTION)
                 ans = dlg.ShowModal()
 
                 if ans == wx.ID_YES:
                     try:
                         move_packages(self.main_frame.eiispath, self.config['eiispath'], self.main_frame.logger)
                     except CopyPackageError:
-                        self.main_frame.logger.warning('Не удалось скопировать уже установленные подсистемы.')
+                        self.main_frame.logger.warning('Не удалось скопировать подсистемы в {}.'.format(
+                            self.config['eiispath']))
+                        self.main_frame.logger.warning('Не достаточно прав доступа или не закрыты файлы подсистем')
+                        self.config['eiispath'] = self.main_frame.eiispath
+                    else:
+                        try:
+                            shutil.rmtree(self.main_frame.eiispath)
+                        except Exception:
+                            self.main_frame.logger.warning('Не удалось удалить установленные подсистемы по прежнему пути.')
 
-                    try:
-                        shutil.rmtree(self.main_frame.eiispath)
-                    except Exception:
-                        self.main_frame.logger.warning('Не удалось удалить установленные подсистемы по прежнему пути.')
+                        full = True
 
-                    full = True
+            confile = os.path.join(WORKDIR, CONFIGFILENAME)
+            with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
+                fp.write(to_json(self.config))
 
             self.main_frame.init(full)  # reread config and set new manager
             self.main_frame.manager.update_links()
