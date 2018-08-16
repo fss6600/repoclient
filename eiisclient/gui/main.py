@@ -58,6 +58,8 @@ class fmMain ( wx.Frame ):
         bSizer111.Add( ( 0, 0), 1, wx.EXPAND, 5 )
         
         self.btRefresh = wx.BitmapButton( self.pLeft, wx.ID_ANY, wx.ArtProvider.GetBitmap( wx.ART_UNDO, wx.ART_BUTTON ), wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.btRefresh.SetToolTip( u"Обновить список пакетов" )
+        
         bSizer111.Add( self.btRefresh, 0, wx.ALL, 5 )
         
         
@@ -66,6 +68,7 @@ class fmMain ( wx.Frame ):
         wxPacketListChoices = [u"Choice 1", u"Choice 2", u"Choice 3", u"Choice 4", u"Choice 5"]
         self.wxPacketList = wx.CheckListBox( self.pLeft, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wxPacketListChoices, 0 )
         self.wxPacketList.SetFont( wx.Font( wx.NORMAL_FONT.GetPointSize(), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
+        self.wxPacketList.SetToolTip( u"Установить галки для установки пакетов.\nСнять галки для удаления пакетов." )
         self.wxPacketList.SetMinSize( wx.Size( 200,-1 ) )
         
         bSizer26.Add( self.wxPacketList, 1, wx.ALL|wx.EXPAND, 5 )
@@ -112,7 +115,8 @@ class fmMain ( wx.Frame ):
         self.btUpdate = wx.Button( self.m_panel6, wx.ID_ANY, u"Обновить", wx.DefaultPosition, wx.DefaultSize, 0 )
         self.btUpdate.SetDefault()
         
-        self.btUpdate.SetToolTip( u"Обновить/установить подсистемы" )
+        self.btUpdate.SetToolTip( u"Запустить процесс установки/обновления пакетов." )
+        self.btUpdate.SetHelpText( u"Запустить процесс обновления/установки" )
         
         bSizer12.Add( self.btUpdate, 0, wx.ALL, 5 )
         
@@ -150,36 +154,47 @@ class fmMain ( wx.Frame ):
         
         self.menuFile.AppendSeparator()
         
+        self.m_menu2 = wx.Menu()
+        self.menuitem_select_all = wx.MenuItem( self.m_menu2, wx.ID_ANY, u"Выбрать все пакеты", wx.EmptyString, wx.ITEM_NORMAL )
+        self.m_menu2.Append( self.menuitem_select_all )
+        
+        self.menuitem_unselect_all = wx.MenuItem( self.m_menu2, wx.ID_ANY, u"Снять все выделения", wx.EmptyString, wx.ITEM_NORMAL )
+        self.m_menu2.Append( self.menuitem_unselect_all )
+        
+        self.menuFile.AppendSubMenu( self.m_menu2, u"Выбор пакетов" )
+        
+        self.menuFile.AppendSeparator()
+        
         self.menuitemExit = wx.MenuItem( self.menuFile, wx.ID_EXIT, u"Завершить"+ u"\t" + u"Ctrl+q", u"Завершить работу программы", wx.ITEM_NORMAL )
         self.menuFile.Append( self.menuitemExit )
         
         self.wxMenuBar.Append( self.menuFile, u"Файл" ) 
         
         self.menuService = wx.Menu()
-        self.menuConfig = wx.MenuItem( self.menuService, wx.ID_ANY, u"Настройки", wx.EmptyString, wx.ITEM_NORMAL )
+        self.menuConfig = wx.MenuItem( self.menuService, wx.ID_ANY, u"Настройки", u"Настройки программы", wx.ITEM_NORMAL )
         self.menuService.Append( self.menuConfig )
         
         self.m_menu1 = wx.Menu()
-        self.menuitemPurge = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Удалить подсистемы", u"Удаление неиспользуемыз подсистем с компьютера", wx.ITEM_NORMAL )
+        self.menuitemPurge = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Удалить подсистемы", u"Удаление неиспользуемых подсистем с компьютера", wx.ITEM_NORMAL )
         self.m_menu1.Append( self.menuitemPurge )
         
-        self.menuitemCleanBuffer = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Очистить буфер", wx.EmptyString, wx.ITEM_NORMAL )
+        self.menuitemCleanBuffer = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Очистить буфер", u"Очистить буфер", wx.ITEM_NORMAL )
         self.m_menu1.Append( self.menuitemCleanBuffer )
         
         self.menuService.AppendSubMenu( self.m_menu1, u"Очистка" )
         
         self.menuService.AppendSeparator()
         
-        self.menuitemLinksUpdate = wx.MenuItem( self.menuService, wx.ID_ANY, u"Обновить ярлыки", wx.EmptyString, wx.ITEM_NORMAL )
+        self.menuitemLinksUpdate = wx.MenuItem( self.menuService, wx.ID_ANY, u"Обновить ярлыки", u"Обновить ярлыки подсистем на рабочем столе", wx.ITEM_NORMAL )
         self.menuService.Append( self.menuitemLinksUpdate )
         
-        self.btFull = wx.MenuItem( self.menuService, wx.ID_ANY, u"Полная обработка", wx.EmptyString, wx.ITEM_CHECK )
+        self.btFull = wx.MenuItem( self.menuService, wx.ID_ANY, u"Полная обработка", u"Включить режим полной обработки файлов пакетов", wx.ITEM_CHECK )
         self.menuService.Append( self.btFull )
         
         self.wxMenuBar.Append( self.menuService, u"Сервис" ) 
         
         self.menuHelp = wx.Menu()
-        self.menuitemManual = wx.MenuItem( self.menuHelp, wx.ID_ANY, u"Руководство"+ u"\t" + u"F1", wx.EmptyString, wx.ITEM_NORMAL )
+        self.menuitemManual = wx.MenuItem( self.menuHelp, wx.ID_ANY, u"Руководство"+ u"\t" + u"F1", u"Открыть файл с руководством по работе с программой", wx.ITEM_NORMAL )
         self.menuHelp.Append( self.menuitemManual )
         
         self.menuHelp.AppendSeparator()
@@ -200,6 +215,8 @@ class fmMain ( wx.Frame ):
         self.wxLogView.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_log_info )
         self.btUpdate.Bind( wx.EVT_BUTTON, self.on_update )
         self.Bind( wx.EVT_MENU, self.on_update, id = self.menuitemUpdate.GetId() )
+        self.Bind( wx.EVT_MENU, self.on_menu_select_all, id = self.menuitem_select_all.GetId() )
+        self.Bind( wx.EVT_MENU, self.on_menu_unselect_all, id = self.menuitem_unselect_all.GetId() )
         self.Bind( wx.EVT_MENU, self.on_exit, id = self.menuitemExit.GetId() )
         self.Bind( wx.EVT_MENU, self.on_config, id = self.menuConfig.GetId() )
         self.Bind( wx.EVT_MENU, self.on_purge, id = self.menuitemPurge.GetId() )
@@ -225,6 +242,12 @@ class fmMain ( wx.Frame ):
     def on_update( self, event ):
         pass
     
+    
+    def on_menu_select_all( self, event ):
+        pass
+    
+    def on_menu_unselect_all( self, event ):
+        pass
     
     def on_exit( self, event ):
         pass
@@ -283,7 +306,9 @@ class fmConfig ( wx.Frame ):
         
         fgSizer1.Add( self.m_staticText4, 0, wx.ALL, 5 )
         
-        self.wxEiisInstallPath = wx.DirPickerCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, u"Выберите директорию для установки подсистем", wx.DefaultPosition, wx.DefaultSize, wx.DIRP_DEFAULT_STYLE )
+        self.wxEiisInstallPath = wx.DirPickerCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, u"Выберите директорию для установки подсистем", wx.DefaultPosition, wx.DefaultSize, wx.DIRP_DEFAULT_STYLE|wx.DIRP_SMALL )
+        self.wxEiisInstallPath.SetToolTip( u"Директория для установки подсистем" )
+        
         fgSizer1.Add( self.wxEiisInstallPath, 0, wx.ALL|wx.EXPAND, 5 )
         
         self.m_staticText61 = wx.StaticText( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
@@ -293,6 +318,8 @@ class fmConfig ( wx.Frame ):
         
         self.wxInstallToUserProfile = wx.CheckBox( self.m_panel15, wx.ID_ANY, u"устанавливать в профиль пользователя", wx.DefaultPosition, wx.DefaultSize, 0 )
         self.wxInstallToUserProfile.SetValue(True) 
+        self.wxInstallToUserProfile.SetToolTip( u"Выберите, если требуется установка в профиль пользователя. \nНапример, при отсутствии прав на установку в папку Program Files\n" )
+        
         fgSizer1.Add( self.wxInstallToUserProfile, 0, wx.ALL, 5 )
         
         self.wxStaticText1 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Путь к репозиторию:", wx.DefaultPosition, wx.DefaultSize, 0 )
@@ -314,6 +341,8 @@ class fmConfig ( wx.Frame ):
         wxThreadsCountChoices = [ u"1", u"2", u"3", u"4", u"5" ]
         self.wxThreadsCount = wx.Choice( self.m_panel15, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wxThreadsCountChoices, 0 )
         self.wxThreadsCount.SetSelection( 0 )
+        self.wxThreadsCount.SetToolTip( u"Количество потоков загрузки.\n\nВ некоторых случаях увеличение количества потоков уменьшает время загрузки файлов с сервера.\nУстанавливается опытным путем." )
+        
         fgSizer1.Add( self.wxThreadsCount, 0, wx.ALL, 5 )
         
         self.m_staticText6 = wx.StaticText( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
@@ -332,6 +361,8 @@ class fmConfig ( wx.Frame ):
         fgSizer1.Add( self.m_staticText7, 0, wx.ALL, 5 )
         
         self.wxEncode = wx.TextCtrl( self.m_panel15, wx.ID_ANY, u"UTF-8", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.wxEncode.SetToolTip( u"Кодировка симвлолв в файлах, используемых программой.\n\nПо-умолчанию UTF-8" )
+        
         fgSizer1.Add( self.wxEncode, 0, wx.ALL|wx.EXPAND, 5 )
         
         self.m_staticText8 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Кодировка FTP-сервера", wx.DefaultPosition, wx.DefaultSize, 0 )
@@ -340,6 +371,8 @@ class fmConfig ( wx.Frame ):
         fgSizer1.Add( self.m_staticText8, 0, wx.ALL, 5 )
         
         self.wxFTPEncode = wx.TextCtrl( self.m_panel15, wx.ID_ANY, u"UTF-8", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.wxFTPEncode.SetToolTip( u"Кодировка символов сервера репозитория.\n\nПри возникновении ошибки в разпознавании имен файлов на сервере программой, установить кодировку символов, используемую сервером" )
+        
         fgSizer1.Add( self.wxFTPEncode, 0, wx.ALL|wx.EXPAND, 5 )
         
         

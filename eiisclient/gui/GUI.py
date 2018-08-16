@@ -108,6 +108,24 @@ class MainFrame(main.fmMain):
     def on_links_update( self, event ):
         self.manager.update_links()
 
+    def on_menu_select_all( self, event ):
+        dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УСТАНОВИТЬ ВСЕ ПАКЕТЫ?',
+                               'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
+        if dlg.ShowModal():
+            self.wxPacketList.Freeze()
+            self.wxPacketList.SetCheckedItems(range(self.wxPacketList.Count))
+            self.wxPacketList.Thaw()
+
+    def on_menu_unselect_all( self, event ):
+        dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УДАЛИТЬ ВСЕ ПАКЕТЫ?',
+                               'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
+        if dlg.ShowModal():
+            self.wxPacketList.Freeze()
+            for item in range(self.wxPacketList.Count):
+                self.wxPacketList.Check(item, False)
+            self.wxPacketList.Thaw()
+
+    ####
     def run(self):
         installed = self.manager.get_installed_packets()
         selected = self.get_selected_packages()
