@@ -18,7 +18,8 @@ import wx.html
 class fmMain ( wx.Frame ):
     
     def __init__( self, parent ):
-        wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = u"Обновление ЕИИС Соцстрах", pos = wx.DefaultPosition, size = wx.Size( 800,600 ), style = wx.DEFAULT_FRAME_STYLE|wx.TAB_TRAVERSAL )
+        wx.Frame.__init__(self, parent, id=wx.ID_ANY, title=u"Обновление ЕИИС Соцстрах", pos=wx.DefaultPosition,
+                          size=wx.Size(1000, 700), style=wx.DEFAULT_FRAME_STYLE | wx.TAB_TRAVERSAL)
         
         self.SetSizeHints( wx.Size( 400,200 ), wx.DefaultSize )
         
@@ -212,6 +213,7 @@ class fmMain ( wx.Frame ):
         # Connect Events
         self.btRefresh.Bind( wx.EVT_BUTTON, self.on_refresh )
         self.wxPacketList.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_package_list )
+        self.wxInfoView.Bind(wx.EVT_ENTER_WINDOW, self.on_enter_view_info)
         self.wxLogView.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_log_info )
         self.btUpdate.Bind( wx.EVT_BUTTON, self.on_update )
         self.Bind( wx.EVT_MENU, self.on_update, id = self.menuitemUpdate.GetId() )
@@ -234,6 +236,9 @@ class fmMain ( wx.Frame ):
         pass
     
     def on_enter_package_list( self, event ):
+        pass
+
+    def on_enter_view_info(self, event):
         pass
     
     def on_enter_log_info( self, event ):

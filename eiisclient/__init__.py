@@ -6,7 +6,7 @@ import os
 __author__ = 'Михаил Петров'
 __email__ = 'adm_fil_02@ro66.fss.ru'
 __division__ = 'филиал №2 ГУ СРО ФСС РФ'
-__version__ = '0.1.4'
+__version__ = '0.1.5b'
 __license__ = 'BSD'
 
 DEFAULT_ENCODING = 'CP1251'

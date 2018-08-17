@@ -15,7 +15,6 @@ from eiisclient.core.utils import get_config_data, hash_calc, to_json
 from eiisclient.gui import main
 
 
-
 class MainFrame(main.fmMain):
     def __init__(self):
         super(MainFrame, self).__init__(None)
@@ -37,11 +36,14 @@ class MainFrame(main.fmMain):
         self.wxLogView.Clear()
         self.Show()
 
-    def on_enter_package_list( self, event ):
-        self.wxPacketList.SetFocus()
+    def on_enter_view_info(self, event):
+        self.wxInfoView.SetFocus()
 
-    def on_enter_log_info( self, event ):
+    def on_enter_log_info(self, event):
         self.wxLogView.SetFocus()
+
+    def on_enter_package_list(self, event):
+        self.wxPacketList.SetFocus()
 
     def on_about(self, event):
         title = 'О программе'
@@ -61,22 +63,22 @@ class MainFrame(main.fmMain):
         ''''''
         self.Close(True)
 
-    def on_update( self, event ):
+    def on_update(self, event):
         thread = threading.Thread(target=self.run)
         thread.setDaemon(True)
         thread.setName('Manager')
         thread.start()
 
-    def on_refresh( self, event ):
-        self.update_packet_list()
+    def on_refresh(self, event):
+        self._init_gui()
 
-    def on_btFull( self, event ):
+    def on_btFull(self, event):
         if self.btFull.IsChecked():
             self.manager.set_full(True)
         else:
             self.manager.set_full(False)
 
-    def on_purge( self, event ):
+    def on_purge(self, event):
         dlg = wx.MessageDialog(None, 'Вы уверены?',
                                'Очистка удаленных пакетов', wx.YES_NO | wx.ICON_QUESTION)
         ans = dlg.ShowModal()
@@ -90,15 +92,7 @@ class MainFrame(main.fmMain):
             else:
                 self.logger.info('Очистка завершена')
 
-    def on_clean_buffer( self, event ):
-        res = self.manager.clean_buffer()
-        if res:
-            self.logger.info('Буфер очищен')
-
-    def on_links_update( self, event ):
-        self.manager.update_links()
-
-    def on_menu_select_all( self, event ):
+    def on_menu_select_all(self, event):
         dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УСТАНОВИТЬ ВСЕ ПАКЕТЫ?',
                                'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
         if dlg.ShowModal():
@@ -106,7 +100,7 @@ class MainFrame(main.fmMain):
             self.wxPacketList.SetCheckedItems(range(self.wxPacketList.Count))
             self.wxPacketList.Thaw()
 
-    def on_menu_unselect_all( self, event ):
+    def on_menu_unselect_all(self, event):
         dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УДАЛИТЬ ВСЕ ПАКЕТЫ?',
                                'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
         if dlg.ShowModal():
@@ -115,7 +109,14 @@ class MainFrame(main.fmMain):
                 self.wxPacketList.Check(item, False)
             self.wxPacketList.Thaw()
 
-    ####
+    def on_clean_buffer(self, event):
+        res = self.manager.clean_buffer()
+        if res:
+            self.logger.info('Буфер очищен')
+
+    def on_links_update(self, event):
+        self.manager.update_links()
+
     def run(self):
         installed = self.manager.get_installed_packets()
         selected = self.get_selected_packages()
@@ -138,7 +139,7 @@ class MainFrame(main.fmMain):
             self.logger.error(err)
 
         finally:
-            self.update_packet_list()
+            self._init_gui()
             self.manager.deactivate()
 
             # возврат элементов в изначальное состояние
@@ -154,6 +155,7 @@ class MainFrame(main.fmMain):
             self.on_btFull(None)
 
             self.logger.info('Закончили...')
+            self.logger.info(50 * '-')
 
     def init(self, full=False):
         """"""
@@ -219,7 +221,7 @@ class MainFrame(main.fmMain):
             self.manager.deactivate()
 
         active_list = self.manager.get_installed_packets()
-        index = local_index.keys()
+        index = list(local_index.keys())
         shared = set(active_list) & set(index)
         abandoned = set(active_list) ^ shared
 
@@ -234,14 +236,27 @@ class MainFrame(main.fmMain):
         self.wxPacketList.Thaw()
 
     def update_info_view(self):
+        info = self.manager.get_info()
+
+        self.wxInfoView.Freeze()
+        self.wxInfoView.SetPage('')
+        self.wxInfoView.AppendToPage('<h5 align="center">Программа обновления подсистем ЕИИС "Соцстрах" </h5><hr>')
+        self.wxInfoView.AppendToPage('<table><tbody>')
+
+        for key, value in sorted(info.items()):
+            self.wxInfoView.AppendToPage('<tr><td width="200">{}</td><td width="400">{}</td></tr>'.format(key, value))
+
+        self.wxInfoView.AppendToPage('</tbody></table>')
         abandoned = [n for n in self.wxPacketList.GetCheckedStrings() if n.startswith('[!]')]
         if len(abandoned):
-            self.wxInfoView.AppendToPage('<p style="color: red;">Внимание!</p>')
+            self.wxInfoView.AppendToPage('<p style="color:red;">Внимание!</p>')
             self.wxInfoView.AppendToPage('<p style="color:red;">Следующие подсистемы отсутствуют в репозитории:</p>')
             self.wxInfoView.AppendToPage('<ul>')
             for name in abandoned:
                 self.wxInfoView.AppendToPage('<li>{}</li>'.format(name))
             self.wxInfoView.AppendToPage('<ul>')
+
+        self.wxInfoView.Thaw()
 
     def get_selected_packages(self):
         return self.wxPacketList.GetCheckedStrings()

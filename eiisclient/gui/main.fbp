@@ -45,7 +45,7 @@
             <property name="minimum_size">400,200</property>
             <property name="name">fmMain</property>
             <property name="pos"></property>
-            <property name="size">800,600</property>
+            <property name="size">1000,700</property>
             <property name="style">wxDEFAULT_FRAME_STYLE</property>
             <property name="subclass">; forward_declare</property>
             <property name="title">Обновление ЕИИС Соцстрах</property>
@@ -955,7 +955,7 @@
                                                                 <property name="window_name"></property>
                                                                 <property name="window_style"></property>
                                                                 <event name="OnChar"></event>
-                                                                <event name="OnEnterWindow"></event>
+                                                                <event name="OnEnterWindow">on_enter_view_info</event>
                                                                 <event name="OnEraseBackground"></event>
                                                                 <event name="OnHtmlCellClicked"></event>
                                                                 <event name="OnHtmlCellHover"></event>
