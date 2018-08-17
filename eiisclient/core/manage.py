@@ -200,7 +200,7 @@ class Manager(object):
         try:
             self.activate()
             if os.path.exists(self.local_index_file):
-                last_change = os.path.getmtime(self.local_index_file)
+                last_change = os.path.getctime(self.local_index_file)
                 last_change = datetime.fromtimestamp(last_change).strftime('%d-%m-%Y %H:%M:%S')
             else:
                 last_change = None
