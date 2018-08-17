@@ -17,13 +17,15 @@ class DispatcherNotActivated(Exception):
 
 
 class DispatcherActivationError(Exception):
-    def __str__(self):
-        return 'Ошибка активации диспетчера'
+    pass
 
 
 class PacketInstallError(Exception):
+    def __init__(self, message=''):
+        self.message = message
+
     def __str__(self):
-        return 'Ошибка при установке пакетов'
+        return 'Ошибка при установке пакетов: {}'.format(self.message)
 
 
 class CopyPackageError(Exception):

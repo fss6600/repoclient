@@ -9,7 +9,7 @@ import wx
 
 from eiisclient import (CONFIGFILENAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, __author__, __division__,
                         __email__, __version__)
-from eiisclient.core.exceptions import CopyPackageError, PacketDeleteError
+from eiisclient.core.exceptions import CopyPackageError, PacketDeleteError, DispatcherActivationError
 from eiisclient.core.manage import Manager
 from eiisclient.core.utils import get_config_data, hash_calc, to_json
 from eiisclient.gui import main
@@ -23,6 +23,9 @@ class MainFrame(main.fmMain):
             os.makedirs(WORKDIR, exist_ok=True)
 
         self.logger = self.get_logger()
+        self.wxLogView.Clear()
+        self.Show()
+
         self.local_index = None
         self.new_index = None
         self.local_index_hash = None
@@ -33,8 +36,7 @@ class MainFrame(main.fmMain):
         self.manager = None
 
         self.init()
-        self.wxLogView.Clear()
-        self.Show()
+        self.logger.info('Инициализация завершена. Программа готова к работе.')
 
     def on_enter_view_info(self, event):
         self.wxInfoView.SetFocus()
@@ -95,7 +97,7 @@ class MainFrame(main.fmMain):
     def on_menu_select_all(self, event):
         dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УСТАНОВИТЬ ВСЕ ПАКЕТЫ?',
                                'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
-        if dlg.ShowModal():
+        if dlg.ShowModal() == wx.ID_YES:
             self.wxPacketList.Freeze()
             self.wxPacketList.SetCheckedItems(range(self.wxPacketList.Count))
             self.wxPacketList.Thaw()
@@ -103,7 +105,7 @@ class MainFrame(main.fmMain):
     def on_menu_unselect_all(self, event):
         dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УДАЛИТЬ ВСЕ ПАКЕТЫ?',
                                'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
-        if dlg.ShowModal():
+        if dlg.ShowModal() == wx.ID_YES:
             self.wxPacketList.Freeze()
             for item in range(self.wxPacketList.Count):
                 self.wxPacketList.Check(item, False)
@@ -168,7 +170,7 @@ class MainFrame(main.fmMain):
         self.repopath = config.get('repopath', '')
         self.eiispath = config.get('eiispath', DEFAULT_INSTALL_PATH)
 
-        if self.repopath:
+        try:
             self.manager = Manager(self.repopath,
                                    eiispath=self.eiispath,
                                    logger=self.logger,
@@ -178,16 +180,23 @@ class MainFrame(main.fmMain):
                                    threads=self.threads,
                                    full=full
                                    )
-            self.logger.debug('{}: инициализирован'.format(self.manager))
-        else:
+        except Exception as err:
+            self.logger.error('Ошибка инициализации менеджера: {}'.format(err))
             self.manager = None
-            self.logger.debug('{}: не инициализирован!'.format(None))
-
-        self._init_gui()
+        else:
+            self.logger.debug('{}: инициализирован'.format(self.manager))
+            self._init_gui()
 
     def _init_gui(self):
-        self.update_packet_list()
-        self.update_info_view()
+        try:
+            self.update_packet_list()
+            self.update_info_view()
+        except UnicodeDecodeError:
+            self.logger.error('Указана неверная кодировка сервера: {}'.format(self.manager.ftpencode))
+        except DispatcherActivationError as err:
+            self.logger.error('Ошибка активации диспетчера: {}'.format(err))
+        except Exception as err:
+            self.logger.error('Ошибка: {}'.format(err))
 
     def log_append(self, message, level=None):
 
@@ -205,56 +214,63 @@ class MainFrame(main.fmMain):
 
     def update_packet_list(self):
         """"""
-        self.wxPacketList.Freeze()
-        self.wxPacketList.Clear()
+        try:
+            self.wxPacketList.Freeze()
+            self.wxPacketList.Clear()
 
-        if self.manager is None:
-            self.logger.error('Не указан репозиторий. Проверьте настройки.')
-            return
+            local_index = self.manager.get_local_index()
 
-        local_index = self.manager.get_local_index()
+            if not local_index:
+                self.logger.debug('Не обнаружены данные локального индекса. Загрузка с сервера')
+                self.manager.activate()
+                local_index = self.manager.remote_index
+                self.manager.deactivate()
 
-        if not local_index:
-            self.logger.debug('Не обнаружены данные локального индекса. Загрузка с сервера')
-            self.manager.activate()
-            local_index = self.manager.remote_index
-            self.manager.deactivate()
+            active_list = self.manager.get_installed_packets()
+            index = list(local_index.keys())
+            shared = set(active_list) & set(index)
+            abandoned = set(active_list) ^ shared
 
-        active_list = self.manager.get_installed_packets()
-        index = list(local_index.keys())
-        shared = set(active_list) & set(index)
-        abandoned = set(active_list) ^ shared
+            for item in abandoned:
+                index.append('[!] {}'.format(item))
 
-        for item in abandoned:
-            index.append('[!] {}'.format(item))
+            self.wxPacketList.Set(sorted(index))
 
-        self.wxPacketList.Set(sorted(index))
+            active_list = ['[!] {}'.format(i) if i in abandoned else i for i in active_list]
 
-        active_list = ['[!] {}'.format(i) if i in abandoned else i for i in active_list]
+            self.wxPacketList.SetCheckedStrings(active_list)  # проставить активные подсистемы
 
-        self.wxPacketList.SetCheckedStrings(active_list)  # проставить активные подсистемы
-        self.wxPacketList.Thaw()
+        finally:
+            self.wxPacketList.Thaw()
 
     def update_info_view(self):
-        info = self.manager.get_info()
-
         self.wxInfoView.Freeze()
         self.wxInfoView.SetPage('')
         self.wxInfoView.AppendToPage('<h5 align="center">Программа обновления подсистем ЕИИС "Соцстрах" </h5><hr>')
-        self.wxInfoView.AppendToPage('<table><tbody>')
 
-        for key, value in sorted(info.items()):
-            self.wxInfoView.AppendToPage('<tr><td width="200">{}</td><td width="400">{}</td></tr>'.format(key, value))
+        if self.manager is None:
+            self.wxInfoView.AppendToPage('<p>Программа не проинициализирована. '
+                                         'Укажите путь к репозиторию в настройках</p>')
+        else:
+            info = self.manager.get_info()
 
-        self.wxInfoView.AppendToPage('</tbody></table>')
-        abandoned = [n for n in self.wxPacketList.GetCheckedStrings() if n.startswith('[!]')]
-        if len(abandoned):
-            self.wxInfoView.AppendToPage('<p style="color:red;">Внимание!</p>')
-            self.wxInfoView.AppendToPage('<p style="color:red;">Следующие подсистемы отсутствуют в репозитории:</p>')
-            self.wxInfoView.AppendToPage('<ul>')
-            for name in abandoned:
-                self.wxInfoView.AppendToPage('<li>{}</li>'.format(name))
-            self.wxInfoView.AppendToPage('<ul>')
+            self.wxInfoView.AppendToPage('<table><tbody>')
+
+            for key, value in sorted(info.items()):
+                self.wxInfoView.AppendToPage(
+                    '<tr><td width="200">{}</td><td width="400">{}</td></tr>'.format(key, value))
+
+            self.wxInfoView.AppendToPage('</tbody></table>')
+
+            abandoned = [n for n in self.wxPacketList.GetCheckedStrings() if n.startswith('[!]')]
+            if len(abandoned):
+                self.wxInfoView.AppendToPage('<p style="color:red;">Внимание!</p>')
+                self.wxInfoView.AppendToPage(
+                    '<p style="color:red;">Следующие подсистемы отсутствуют в репозитории:</p>')
+                self.wxInfoView.AppendToPage('<ul>')
+                for name in abandoned:
+                    self.wxInfoView.AppendToPage('<li>{}</li>'.format(name))
+                self.wxInfoView.AppendToPage('<ul>')
 
         self.wxInfoView.Thaw()
 
@@ -319,7 +335,11 @@ class ConfigFrame(main.fmConfig):
 
         self.wxThreadsCount.Select(self.config.get('threads', 1) - 1)
         self.wxPurgePackets.SetValue(self.config.get('purge', False))
-        self.wxEncode.SetValue(self.config.get('encode', 'UTF-8'))
+        ## значение кодировки файлов временно заблокировано до перехода на UTF-8
+        # self.wxEncode.SetValue(self.config.get('encode', 'UTF-8'))
+        self.wxEncode.SetValue('CP1251')
+        self.wxEncode.Enable(False)
+
         self.wxFTPEncode.SetValue(self.config.get('ftpencode', 'UTF-8'))
 
         self.sdApply.Label = 'Применить'
@@ -334,6 +354,11 @@ class ConfigFrame(main.fmConfig):
         self.wxEiisInstallPath.SetPath(path)
 
     def Apply(self, event):
+        if self.wxRepoPath.GetValue() == '':
+            wx.MessageBox('Укажите путь к репозиторию',
+                          'Настройки', wx.ICON_EXCLAMATION, None)
+            return
+
         self.config['repopath'] = self.wxRepoPath.GetValue()
         self.config['eiispath'] = self.wxEiisInstallPath.GetPath()
         self.config['threads'] = int(self.wxThreadsCount.Selection) + 1

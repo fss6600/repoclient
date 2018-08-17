@@ -364,8 +364,8 @@ class fmConfig ( wx.Frame ):
         self.m_staticText7.Wrap( -1 )
         
         fgSizer1.Add( self.m_staticText7, 0, wx.ALL, 5 )
-        
-        self.wxEncode = wx.TextCtrl( self.m_panel15, wx.ID_ANY, u"UTF-8", wx.DefaultPosition, wx.DefaultSize, 0 )
+
+        self.wxEncode = wx.TextCtrl(self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0)
         self.wxEncode.SetToolTip( u"Кодировка симвлолв в файлах, используемых программой.\n\nПо-умолчанию UTF-8" )
         
         fgSizer1.Add( self.wxEncode, 0, wx.ALL|wx.EXPAND, 5 )

@@ -27,7 +27,8 @@ from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, SELECTEDFILENAME,
 from eiisclient.core.dispatch import BaseDispatcher, get_dispatcher
 from eiisclient.core.eiisreestr import REESTR
 from eiisclient.core.exceptions import (CopyPackageError, DispatcherActivationError, DispatcherNotActivated,
-                                        DownloadPacketError, LinkUpdateError, PacketDeleteError, RepoIsBusy)
+                                        DownloadPacketError, LinkUpdateError, PacketDeleteError, RepoIsBusy,
+                                        PacketInstallError)
 from eiisclient.core.utils import file_hash_calc, from_json, get_temp_dir, to_json
 
 CONFIGFILE = os.path.normpath(os.path.join(WORKDIR, 'config.json'))
@@ -87,7 +88,7 @@ class Manager(object):
         return '<Manager: {}>'.format(id(self))
 
     def start(self, installed: Iterable, selected: Iterable):
-        ''''''
+        """"""
         #  определение action_list на установку, обновление и удаление
         install, update, delete = self.get_lists_difference(installed, selected)
 
@@ -168,7 +169,6 @@ class Manager(object):
             self.disp = get_dispatcher(self.repo, logger=self.logger, encode=self.encode,
                                        ftpencode=self.ftpencode, tempdir=self.tempdir)
         except Exception as err:
-            self.logger.error('ошибка активации диспетчера')
             self.logger.debug('repo: {}'.format(self.repo))
             self.logger.debug('encode: {}'.format(self.encode))
             raise DispatcherActivationError(err)
@@ -346,9 +346,9 @@ class Manager(object):
     def parse_data_by_action_gen(self, seq, action):
         ''''''
         if action == Action.install:
-            self.logger.info('Обработка данных на установку пакетов:')
+            self.logger.info('Обработка данных индекс-файла на установку пакетов:')
             for package in seq:
-                self.logger.info('- {}'.format(package))
+                self.logger.info('- "{}"'.format(package))
                 self.claim_packet(package)
                 files = self.remote_index[package]['files']
 
@@ -363,14 +363,13 @@ class Manager(object):
                         yield packname, action, src, crc
 
         elif action == Action.update:
-            self.logger.info('Обработка данных на обновление пакетов')
+            self.logger.info('Обработка данных индекс-файла на обновление пакетов:')
             for package in seq:
-                self.logger.info('- {}'.format(package))
                 if self.local_index.get(package, None) is None:  # первый запуск
-                    self.local_index[package] = {'hash': '', 'files': {}}
+                    self.local_index[package] = {'hash': '', 'files': {}, 'phash': ''}
 
                 if self.full or not self.local_index[package]['phash'] == self.remote_index[package]['phash']:
-
+                    self.logger.info('- "{}"'.format(package))
                     local_files = self.local_index[package]['files']
                     remote_files = self.remote_index[package]['files']
 
@@ -398,9 +397,9 @@ class Manager(object):
                                     yield package, act, file, hash
 
         elif action == Action.delete:
-            self.logger.info('Обработка данных на удаление пакетов')
+            self.logger.info('Обработка данных индекс-файла на удаление пакетов:')
             for package in seq:
-                self.logger.info('- {}'.format(package))
+                self.logger.info('- "{}"'.format(package))
                 yield package
 
         else:
@@ -460,6 +459,7 @@ class Manager(object):
             for worker in workers:  # стартуем пчелок
                 worker.start()
             # todo: добавить обработку очередей в цикл While
+            self.logger.info('Обработка очереди загрузки/удаление пакетов:')
             main_queue.join()  # ожидаем окончания обработки очереди
             stopper.set()
 
@@ -474,6 +474,8 @@ class Manager(object):
             if error:
                 raise DownloadPacketError('Ошибка при загрузке пакетов из репозитория. Пакеты не будут установлены '
                                           'или обновлены')
+            else:
+                self.logger.info('Загрузка файлов завершена')
 
     def install_packets(self, selected: Iterable):
         '''Копирование пакетов из буфера в папку установки'''
@@ -485,7 +487,10 @@ class Manager(object):
             src = os.path.join(self.buffer, package)
             dst = os.path.join(self.eiispath, package)
 
-            self.copy_package(src, dst)
+            try:
+                self.copy_package(src, dst)
+            except PermissionError as err:
+                raise PacketInstallError('Недостаточно прав на установку пакета {} в {}'.format(package, self.eiispath))
             self.logger.debug('{} скопирован в {}'.format(package, dst))
 
             shutil.rmtree(src)
@@ -623,6 +628,7 @@ class Manager(object):
 
 class Worker(threading.Thread):
     files_faulted = Counter()
+    packages_started = set()
     max_repeat = 3
 
     def __init__(self, queue: Queue, exc_queue: Queue, stopper: threading.Event, dispatcher: BaseDispatcher,
@@ -657,9 +663,19 @@ class Worker(threading.Thread):
                     self.logger.debug(
                         '{}<task-{}> ({}|{}|{})'.format(self, task_id, task.packetname, task.action, task.src))
 
+                    if not task.packetname in self.packages_started:  # для вывода информации о загрузке пакета
+                        self.packages_started.add(task.packetname)
+                        new_pack = True
+                    else:
+                        new_pack = False
+
                     if task.action == Action.delete:
+                        if new_pack:
+                            self.logger.info('- удаление "{}"'.format(task.packetname))
                         self.remove_file(task.src)
                     else:
+                        if new_pack:
+                            self.logger.info('- загрузка "{}"'.format(task.packetname))
                         fp = self.dispatcher.get_file(task.src)
                         hash_sum = file_hash_calc(fp)
 
