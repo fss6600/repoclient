@@ -8,6 +8,11 @@ import sys
 import threading
 import time
 import weakref
+from collections import Counter, namedtuple
+from collections.abc import Iterable
+from datetime import datetime
+from enum import Enum
+from queue import Empty, Queue
 
 import pythoncom
 
@@ -18,18 +23,12 @@ except ImportError:
 else:
     NOLINKS = False
 
-from collections import Counter, namedtuple
-from enum import Enum
-from queue import Queue, Empty
-from collections.abc import Iterable
-from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, SELECTEDFILENAME
-from eiisclient.core.dispatch import get_dispatcher, BaseDispatcher
+from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, SELECTEDFILENAME, WORKDIR, __version__
+from eiisclient.core.dispatch import BaseDispatcher, get_dispatcher
 from eiisclient.core.eiisreestr import REESTR
-from eiisclient.core.exceptions import (
-    RepoIsBusy, DispatcherNotActivated, DispatcherActivationError, DownloadPacketError,
-    PacketDeleteError, LinkUpdateError, CopyPackageError)
-from eiisclient.core.utils import get_temp_dir, file_hash_calc, from_json, to_json
-from eiisclient import __version__
+from eiisclient.core.exceptions import (CopyPackageError, DispatcherActivationError, DispatcherNotActivated,
+                                        DownloadPacketError, LinkUpdateError, PacketDeleteError, RepoIsBusy)
+from eiisclient.core.utils import file_hash_calc, from_json, get_temp_dir, to_json
 
 CONFIGFILE = os.path.normpath(os.path.join(WORKDIR, 'config.json'))
 INDEXFILE = os.path.normpath(os.path.join(WORKDIR, 'index.json'))
@@ -200,17 +199,23 @@ class Manager(object):
     def get_info(self) -> dict:
         try:
             self.activate()
+            if os.path.exists(self.local_index_file):
+                last_change = os.path.getmtime(self.local_index_file)
+                last_change = datetime.fromtimestamp(last_change).strftime('%d-%m-%Y %H:%M:%S')
+            else:
+                last_change = None
+
             return {
                 'Версия программы': __version__,
                 'Пакетов в репозитории': len(self.remote_index.keys()),
                 'Установлено подсистем': len(self.get_installed_packets()),
-                'Последнее обновление': os.path.getmtime(self.local_index_file) if os.path.exists(
-                    self.local_index_file) else None,
+                'Дата последнего обновления': last_change,
                 'Наличие обновлений': 'Да' if self.repo_updated() else 'Нет',
                 'Пакетов в буфере': self.buffer_count(),
                 'Путь: подсистемы': self.eiispath,
                 'Путь: репозиторий': self.repo,
                 }
+
         finally:
             self.deactivate()
 
@@ -586,22 +591,24 @@ class Manager(object):
 
         return False
 
-    @staticmethod
-    def copy_package(src, dst):
+    def copy_package(self, src, dst):
         for top, _, files in os.walk(src, topdown=False):
             for file in files:
                 s = os.path.join(top, file)
                 d = os.path.join(os.path.dirname(dst), os.path.relpath(s, os.path.dirname(src)))
                 try:
                     shutil.copyfile(s, d)
+                    self.logger.debug('[1] скопирован: {}  ->  {}'.format(s, d))
                 except FileNotFoundError:  # нет директории в месте назначения
                     try:
-                        os.makedirs(os.path.dirname(d), exist_ok=True)
+                        dname = os.path.dirname(d)
+                        os.makedirs(dname, exist_ok=True)
+                        self.logger.debug('создана папка {}'.format(dname))
                     except PermissionError:
                         raise
                     else:
                         shutil.copyfile(s, d)
-                        pass
+                        self.logger.debug('[2] скопирован: {}  ->  {}'.format(s, d))
 
     def move_packages(self, src, dst):
         try:
