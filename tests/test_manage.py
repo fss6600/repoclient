@@ -74,8 +74,8 @@ class Manage_1_TestCase(unittest.TestCase):
 
         # пакеты еще не установлены
         self.assertFalse(self.manager.local_packet_exists('Ревизор'))
-        self.assertEqual(self.manager.get_installed_packets(), ())
-        self.assertEqual(self.manager.get_selected_packets(), ())
+        self.assertEqual(self.manager.get_installed_packages(), ())
+        self.assertEqual(self.manager.get_selected_packages(), ())
 
         # буфер еще не создан
         self.assertTrue(self.manager.buffer_is_empty())
@@ -303,7 +303,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         ##  no eiispath
         dirname = os.path.join('C:\\', 'test_78540297589')
         self.manager.eiispath = dirname
-        res = self.manager.get_installed_packets()
+        res = self.manager.get_installed_packages()
 
         self.assertEqual(self.manager.eiispath, dirname)
         self.assertIsInstance(res, tuple)
@@ -317,7 +317,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.assertEqual(self.manager.eiispath, eiispath)
 
         # no eiis
-        res = self.manager.get_installed_packets()
+        res = self.manager.get_installed_packages()
         self.assertIsInstance(res, tuple)
         self.assertEqual(len(res), 0)
 
@@ -333,7 +333,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
 
 
         ##  3 eiis
-        res = self.manager.get_installed_packets()
+        res = self.manager.get_installed_packages()
         # print(res)
         # print(os.listdir(eiispath))
         # print(os.listdir(self.manager.eiispath))
@@ -344,7 +344,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
 
     def test_5_get_selected_packets_list(self):
         self.manager.selected_packets_list_file = os.path.join(self.tempdir.name, 'selected')
-        res = self.manager.get_selected_packets()
+        res = self.manager.get_selected_packages()
 
         # no file
         self.assertIsInstance(res, tuple)
@@ -358,7 +358,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
             fp.write('Ревизор\n')
             fp.write('# Форма 4\n')
 
-        res = self.manager.get_selected_packets()
+        res = self.manager.get_selected_packages()
         self.assertIsInstance(res, tuple)
         self.assertEqual(len(res), 2)
         self.assertIn('Бухгалтерия', res)
@@ -604,8 +604,8 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         self.manager = Manager(self.repodir.name, workdir=self.workdir.name, eiispath=self.eiispath.name,
                                logger=self.logger)
         self.manager.desktop = self.desktop.name
-        self.installed = self.manager.get_installed_packets()
-        self.selected = self.manager.get_selected_packets()
+        self.installed = self.manager.get_installed_packages()
+        self.selected = self.manager.get_selected_packages()
 
     def tearDown(self):
         pass
@@ -614,7 +614,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         self.manager.start(self.installed, self.selected)
 
         self.assertTrue(self.manager.buffer_is_empty())
-        self.assertSequenceEqual(self.manager.get_installed_packets(), ())
+        self.assertSequenceEqual(self.manager.get_installed_packages(), ())
         local_index_data = self.manager.get_local_index()
         self.assertIn('Бухгалтерия', local_index_data.keys())
         hash_data = self.manager.get_local_index_hash()
@@ -631,7 +631,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         self.manager.start(installed, selected)
 
         self.assertTrue(self.manager.buffer_is_empty())
-        self.assertSequenceEqual(self.manager.get_installed_packets(), ('Бухгалтерия',))
+        self.assertSequenceEqual(self.manager.get_installed_packages(), ('Бухгалтерия',))
         self.assertNotEqual(len(self.manager.get_local_index()), 0)
         self.assertIn('Бухгалтерия', self.manager.get_local_index().keys())
         self.assertIsNotNone(self.manager.get_local_index_hash())
@@ -702,7 +702,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         path0 = os.path.join(self.eiispath.name, 'Бухгалтерия', 'compkeep.exe')
         with open(path0), self.assertLogs(__name__, logging.ERROR) as cm:
             self.manager.activate()
-            self.selected = self.manager.get_selected_packets()
+            self.selected = self.manager.get_selected_packages()
             self.manager.start(self.installed, self.selected)
         message = cm.output[0]
         self.assertIn('Ошибка удаления пакетов подсистем', message)
@@ -710,7 +710,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
 
         ## удаление (переименование пакета)
         self.manager.activate()
-        self.selected = self.manager.get_selected_packets()
+        self.selected = self.manager.get_selected_packages()
         self.manager.start(self.installed, self.selected)
 
         self.manager.activate()
@@ -727,7 +727,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
             fp.write('Бухгалтерия\n')
 
         self.manager.activate()
-        self.selected = self.manager.get_selected_packets()
+        self.selected = self.manager.get_selected_packages()
         self.manager.start(self.installed, self.selected)
 
         self.manager.activate()
@@ -747,7 +747,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
         path0 = os.path.join(self.eiispath.name, 'Бухгалтерия', 'compkeep.exe')
         with open(path0), self.assertLogs(__name__, logging.ERROR) as cm:
             self.manager.activate()
-            self.selected = self.manager.get_selected_packets()
+            self.selected = self.manager.get_selected_packages()
             self.manager.start(self.installed, self.selected)
         message = cm.output[0]
         self.assertIn('Ошибка удаления пакетов подсистем', message)
@@ -755,7 +755,7 @@ class Manage_3_WholeProcessCase(unittest.TestCase):
 
         ## удаление
         self.manager.activate()
-        self.selected = self.manager.get_selected_packets()
+        self.selected = self.manager.get_selected_packages()
         self.manager.purge = True
         self.manager.start(self.installed, self.selected)
 

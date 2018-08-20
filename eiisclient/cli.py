@@ -10,8 +10,8 @@ from logging.handlers import RotatingFileHandler
 
 import wx
 
-from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, __version__, SELECTEDFILENAME, CONFIGFILENAME
-from eiisclient.core.exceptions import DispatcherActivationError, RepoIsBusy, NoUpdates
+from eiisclient import CONFIGFILENAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, SELECTEDFILENAME, WORKDIR, __version__
+from eiisclient.core.exceptions import DispatcherActivationError, NoUpdates, RepoIsBusy
 from eiisclient.core.manage import Manager
 from eiisclient.core.utils import get_config_data, to_json
 from eiisclient.gui import GUI
@@ -40,11 +40,11 @@ USAGE = '%(prog)s [-h] [-d] [-l] [--version] [--nogui] [--purge] [--threads=N] '
 
 
 def get_args():
-    ''''''
-    programname = 'eiiscli.exe'
+    """"""
+    program_name = 'eiiscli.exe'
     commands = ('init', 'info', 'clean')
 
-    parser = ArgumentParser(prog=programname,
+    parser = ArgumentParser(prog=program_name,
                             formatter_class=RawDescriptionHelpFormatter,
                             usage=USAGE,
                             description=DESC)
@@ -68,7 +68,7 @@ def get_args():
                         default=None, help="кодировка вывода сообщений")
     parser.add_argument("--ftpencode", dest='ftpencode', type=str,
                         default=None, help="кодировка ftp сервера")
-    parser.add_argument("--version", action='version', version='{}: {}'.format(programname, __version__),
+    parser.add_argument("--version", action='version', version='{}: {}'.format(program_name, __version__),
                         help="версия программы")
 
     try:
@@ -80,7 +80,7 @@ def get_args():
 
 
 def main():  # pragma: no cover
-    ''''''
+    """"""
     try:
         args = get_args()
     except SystemExit as err:
@@ -168,8 +168,8 @@ def main():  # pragma: no cover
                 res = 'Успешно очищено от удаленных'
             return res
 
-        installed = manager.get_installed_packets()
-        selected = manager.get_selected_packets()
+        installed = manager.get_installed_packages()
+        selected = manager.get_selected_packages()
 
         begin_time = datetime.datetime.utcnow()
         try:

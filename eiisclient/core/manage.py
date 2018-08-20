@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import print_function
 
 import glob
@@ -194,7 +195,7 @@ class Manager(object):
         try:
             self.activate()
             if os.path.exists(self.local_index_file):
-                last_change = os.path.getctime(self.local_index_file)
+                last_change = os.path.getmtime(self.local_index_file)
                 last_change = datetime.fromtimestamp(last_change).strftime('%d-%m-%Y %H:%M:%S')
             else:
                 last_change = None
@@ -202,7 +203,7 @@ class Manager(object):
             return {
                 'Версия программы': __version__,
                 'Пакетов в репозитории': len(self.remote_index.keys()),
-                'Установлено подсистем': len(self.get_installed_packets()),
+                'Установлено подсистем': len(self.get_installed_packages()),
                 'Дата последнего обновления': last_change,
                 'Наличие обновлений': 'Да' if self.repo_updated() else 'Нет',
                 'Пакетов в буфере': self.buffer_count(),
@@ -213,7 +214,7 @@ class Manager(object):
         finally:
             self.deactivate()
 
-    def get_installed_packets(self) -> tuple:
+    def get_installed_packages(self) -> tuple:
         '''Список активных подсистем
 
         Возвращает кортеж с подсистемами, найденными в папке установки на локальной машине.
@@ -226,7 +227,7 @@ class Manager(object):
         else:
             return tuple()
 
-    def get_selected_packets(self) -> tuple:
+    def get_selected_packages(self) -> tuple:
         try:
             with open(self.selected_packets_list_file) as fp:
                 return tuple(
@@ -483,7 +484,7 @@ class Manager(object):
             dst = os.path.join(self.eiispath, package)
 
             try:
-                self.move_packages(src, dst)
+                self.move_package(src, dst)
             except PermissionError:
                 raise PacketInstallError('Недостаточно прав на установку пакета {} в {}'.format(package, self.eiispath))
             except Exception as err:
@@ -493,7 +494,7 @@ class Manager(object):
                 self.logger.info(' - {} обработан'.format(package))
 
     def update_links(self):
-        for packet in self.get_installed_packets():
+        for packet in self.get_installed_packages():
             try:
                 title, exe_file_path = self._get_link_data(packet)
                 self.create_shortcut(title, exe_file_path)
@@ -521,7 +522,7 @@ class Manager(object):
                 if lp.path == exe_file_path:
                     return
                 lp.path = exe_file_path
-                lp.description = 'Запуск подсистемы "{}" ЕИИС Соцстрах РФ'
+                lp.description = 'Запуск подсистемы "{}" ЕИИС Соцстрах РФ'.format(title)
                 lp.working_directory = workdir
                 lp.write()
                 self.logger.debug('Создан ярлык: {}'.format(lnpath))
@@ -630,22 +631,32 @@ class Manager(object):
             for file in files:
                 s = os.path.join(top, file)
                 d = os.path.join(os.path.dirname(dst), os.path.relpath(s, os.path.dirname(src)))
-                print(s, d)
                 try:
-                    self.logger.debug('[1] копируется: {}  ->  {}'.format(s, d))
+                    self.logger.debug('[1] copy: {}  ->  {}'.format(s, d))
                     shutil.copyfile(s, d)
                 except FileNotFoundError:  # нет директории в месте назначения
                     dname = os.path.dirname(d)
-                    os.makedirs(dname, exist_ok=True)
+                    try:
+                        os.makedirs(dname, exist_ok=True)
+                    except Exception as err:
+                        self.logger.debug('Make dir error: {}'.format(err))
+                        raise
                     self.logger.debug('создана папка {}'.format(dname))
-                    self.logger.debug('[2] копируется: {}  ->  {}'.format(s, d))
+                    self.logger.debug('[2] copy: {}  ->  {}'.format(s, d))
                     shutil.copyfile(s, d)
                 except PermissionError:
-                    chwmod(d)
-                    self.logger.debug('[3] копируется: {}  ->  {}'.format(s, d))
+                    try:
+                        chwmod(d)
+                    except Exception as err:
+                        self.logger.debug('Chmod error: {}'.format(err))
+                        raise
+                    self.logger.debug('[3] copy: {}  ->  {}'.format(s, d))
                     shutil.copyfile(s, d)
+                except Exception as err:
+                    self.logger.debug('Error: {}'.format(err))
+                    raise
 
-    def move_packages(self, src, dst):
+    def move_package(self, src, dst):
         self.logger.debug('moving from: {} -> {}'.format(src, dst))
         self.copy_package(src, dst)
         self._remove_dir(src)
