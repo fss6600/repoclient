@@ -6,7 +6,6 @@ import os
 import shutil
 import sys
 import threading
-import time
 import weakref
 from collections import Counter, namedtuple
 from collections.abc import Iterable
@@ -26,10 +25,10 @@ else:
 from eiisclient import DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, SELECTEDFILENAME, WORKDIR, __version__
 from eiisclient.core.dispatch import BaseDispatcher, get_dispatcher
 from eiisclient.core.eiisreestr import REESTR
-from eiisclient.core.exceptions import (CopyPackageError, DispatcherActivationError, DispatcherNotActivated,
+from eiisclient.core.exceptions import (DispatcherActivationError, DispatcherNotActivated,
                                         DownloadPacketError, LinkUpdateError, PacketDeleteError, RepoIsBusy,
                                         PacketInstallError)
-from eiisclient.core.utils import file_hash_calc, from_json, get_temp_dir, to_json
+from eiisclient.core.utils import file_hash_calc, from_json, get_temp_dir, to_json, chwmod
 
 CONFIGFILE = os.path.normpath(os.path.join(WORKDIR, 'config.json'))
 INDEXFILE = os.path.normpath(os.path.join(WORKDIR, 'index.json'))
@@ -95,17 +94,12 @@ class Manager(object):
         try:
             self.activate()
 
-            # проверка на наличие обновлений
-            # if not install and not delete and not self.repo_updated():
-            #     raise NoUpdates
-
             self.action_list['install'] = self.parse_data_by_action_gen(install, Action.install)
             self.action_list['update'] = self.parse_data_by_action_gen(update, Action.update)
             self.action_list['delete'] = self.parse_data_by_action_gen(delete, Action.delete)
 
             # деактивация пакетов, помеченных на удаление
-            # if delete:
-            self.delete_packets()
+            self.delete_packages()
 
             # загрузка файлов пакетов из репозитория
             self.handle_files()
@@ -249,32 +243,33 @@ class Manager(object):
 
         return install, update, delete
 
-    def delete_packets(self):
-        for packet in self.action_list['delete']:
-            pack_path = os.path.join(self.eiispath, packet)
+    def delete_packages(self):
+        for package in self.action_list['delete']:
+            pack_path = os.path.join(self.eiispath, package)
             if self.purge:
                 try:
-                    shutil.rmtree(pack_path)
+                    self._remove_dir(pack_path)
                 except Exception as err:
-                    self.logger.error('- ошибка удаления пакета {}: {}'.format(packet, err))
+                    self.logger.error('- ошибка удаления пакета {}: {}'.format(package, err))
                 else:
-                    self.logger.info('{} - удален'.format(packet))
+                    self.logger.info('{} - удален'.format(package))
                     continue
 
             try:
                 new_pack_path = '{}.removed'.format(pack_path)
                 os.rename(pack_path, new_pack_path)
             except Exception as err:
-                self.logger.debug('- ошибка удаления пакета {}: {}'.format(packet, err))
+                self.logger.debug('- ошибка удаления пакета {}: {}'.format(package, err))
                 raise PacketDeleteError
             else:
-                self.logger.info('{} - помечен как удаленный'.format(packet))
+                self.logger.info('{} - помечен как удаленный'.format(package))
 
             # удаление ярлыка подсистемы
             try:
-                self.remove_shortcut(packet)
+                self.remove_shortcut(package)
+                self.logger.debug('Удален ярлык для {}'.format(package))
             except LinkUpdateError:
-                self.logger.error('ошибка удаления ярлыка для {}'.format(packet))
+                self.logger.error('ошибка удаления ярлыка для {}'.format(package))
 
     def set_full(self, value=False):
         self.full = value
@@ -284,7 +279,7 @@ class Manager(object):
             try:
                 if packet.endswith('.removed'):
                     fp = os.path.join(self.eiispath, packet)
-                    shutil.rmtree(fp)
+                    self._remove_dir(fp)
             except Exception as err:
                 raise PacketDeleteError(err)
 
@@ -478,7 +473,7 @@ class Manager(object):
                 self.logger.info('Загрузка файлов завершена')
 
     def install_packets(self, selected: Iterable):
-        '''Копирование пакетов из буфера в папку установки'''
+        '''Перемещение пакетов из буфера в папку установки'''
         for package in self.buffer_content():
             if not package in selected:  # возможно пакет остался с прошлой неудачной установки
                 self.logger.debug('{} есть в буфере, но нет в списке устанавливаемых пакетов - пропуск'.format(package))
@@ -488,14 +483,14 @@ class Manager(object):
             dst = os.path.join(self.eiispath, package)
 
             try:
-                self.copy_package(src, dst)
-            except PermissionError as err:
+                self.move_packages(src, dst)
+            except PermissionError:
                 raise PacketInstallError('Недостаточно прав на установку пакета {} в {}'.format(package, self.eiispath))
-            self.logger.debug('{} скопирован в {}'.format(package, dst))
-
-            shutil.rmtree(src)
-            self.logger.debug('{} удален из буфера'.format(package))
-            self.logger.info(' - {} обработан'.format(package))
+            except Exception as err:
+                raise PacketInstallError('Ошибка при установке пакета {}: {}'.format(package, err))
+            else:
+                self.logger.debug('{} перемещен из буфера в {}'.format(package, dst))
+                self.logger.info(' - {} обработан'.format(package))
 
     def update_links(self):
         for packet in self.get_installed_packets():
@@ -539,6 +534,9 @@ class Manager(object):
         link_path = os.path.join(self.desktop, title + '.lnk')
         try:
             os.unlink(link_path)
+        except PermissionError:
+            chwmod(link_path)
+            os.unlink(link_path)
         except FileNotFoundError:
             pass
 
@@ -552,7 +550,7 @@ class Manager(object):
             for pack in packs:
                 try:
                     path = os.path.join(self.buffer, pack)
-                    shutil.rmtree(path)
+                    self._remove_dir(path)
                 except Exception:
                     done = False
                     self.logger.error('Ошибка при удалении пакета {} из буфера'.format(pack))
@@ -587,6 +585,37 @@ class Manager(object):
         self.logger.debug('{}: task_k: {}'.format(self, self.task_queue_k))
         self.logger.debug('{}: purge: {}'.format(self, self.purge))
 
+    def _remove_dir(self, fpath):
+        """Удаление директории с файлами"""
+        for top, _, files in os.walk(fpath, topdown=False):
+            for file in files:
+                fp = os.path.join(top, file)
+                try:
+                    self.logger.debug('[1] удаление {}'.format(fp))
+                    os.unlink(fp)
+                except PermissionError:
+                    self.logger.debug('[2] удаление {}'.format(fp))
+                    chwmod(fp)
+                    try:
+                        os.unlink(fp)
+                    except Exception as err:
+                        self.logger.debug('ошибка удаления {}'.format(fp))
+                        raise IOError(err)
+                except FileNotFoundError:
+                    self.logger.debug('удаление {} - не найден'.format(fp))
+                    pass
+
+            try:
+                self.logger.debug('[1] удаление {}'.format(top))
+                os.rmdir(top)
+            except PermissionError:
+                chwmod(top)
+                self.logger.debug('[2] удаление {}'.format(top))
+                os.rmdir(top)
+            except FileNotFoundError:
+                self.logger.debug('удаление {} - не найден'.format(top))
+                pass
+
     def file_is_present(self, package, file, hash):
         for path in (self.eiispath, self.buffer):
             fp = os.path.join(path, package, file)
@@ -601,29 +630,25 @@ class Manager(object):
             for file in files:
                 s = os.path.join(top, file)
                 d = os.path.join(os.path.dirname(dst), os.path.relpath(s, os.path.dirname(src)))
+                print(s, d)
                 try:
+                    self.logger.debug('[1] копируется: {}  ->  {}'.format(s, d))
                     shutil.copyfile(s, d)
-                    self.logger.debug('[1] скопирован: {}  ->  {}'.format(s, d))
                 except FileNotFoundError:  # нет директории в месте назначения
-                    try:
-                        dname = os.path.dirname(d)
-                        os.makedirs(dname, exist_ok=True)
-                        self.logger.debug('создана папка {}'.format(dname))
-                    except PermissionError:
-                        raise
-                    else:
-                        shutil.copyfile(s, d)
-                        self.logger.debug('[2] скопирован: {}  ->  {}'.format(s, d))
+                    dname = os.path.dirname(d)
+                    os.makedirs(dname, exist_ok=True)
+                    self.logger.debug('создана папка {}'.format(dname))
+                    self.logger.debug('[2] копируется: {}  ->  {}'.format(s, d))
+                    shutil.copyfile(s, d)
+                except PermissionError:
+                    chwmod(d)
+                    self.logger.debug('[3] копируется: {}  ->  {}'.format(s, d))
+                    shutil.copyfile(s, d)
 
     def move_packages(self, src, dst):
-        try:
-            for packname in os.listdir(src):
-                s = os.path.join(src, packname)
-                d = os.path.join(dst, packname)
-                self.logger.debug('move from: {} -> {}'.format(s, d))
-                self.copy_package(s, d)
-        except Exception as err:
-            raise CopyPackageError from err
+        self.logger.debug('moving from: {} -> {}'.format(src, dst))
+        self.copy_package(src, dst)
+        self._remove_dir(src)
 
 
 class Worker(threading.Thread):
@@ -711,11 +736,8 @@ class Worker(threading.Thread):
             pass
         except (PermissionError) as err:
             self.logger.debug('ошибка при удалении файла: {}: {}'.format(fpath, err))
-            import stat
-            if not os.access(fpath, os.W_OK):
-                os.chmod(fpath, stat.S_IWUSR)
-                time.sleep(0.3)
-                try:
-                    os.unlink(fpath)
-                except Exception:
-                    self.logger.debug('ошибка {}: файл {} не удален'.format(err, fpath))
+            chwmod(fpath)
+            try:
+                os.unlink(fpath)
+            except Exception:
+                self.logger.debug('ошибка {}: файл {} не удален'.format(err, fpath))

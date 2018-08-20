@@ -377,7 +377,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.manager.activate()
         self.manager.action_list['delete'] = iter(packs_for_delete_1)
 
-        self.manager.delete_packets()
+        self.manager.delete_packages()
 
         res = os.listdir(self.eiispath.name)
         self.assertEqual(len(res), len(packs))  # пакеты не удалены
@@ -387,7 +387,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
 
         self.manager.action_list['delete'] = iter(packs_for_delete_2)
         self.manager.purge = True
-        self.manager.delete_packets()
+        self.manager.delete_packages()
         res = os.listdir(self.eiispath.name)
 
         self.assertEqual(len(res), len(packs) - len(packs_for_delete_2))

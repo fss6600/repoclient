@@ -2,9 +2,14 @@ import gzip
 import hashlib
 import json
 import os
-import warnings
+import stat
+import time
 from tempfile import TemporaryDirectory
+
 from eiisclient import DEFAULT_ENCODING
+
+TIMETOSLEEP = 0.1
+
 
 def to_json(data):
     """Форматирование данных в json формат
@@ -69,3 +74,9 @@ def get_config_data(workdir, encode=DEFAULT_ENCODING):
         config = {}
 
     return config
+
+
+def chwmod(fpath):
+    if not os.access(fpath, os.W_OK):
+        os.chmod(fpath, stat.S_IWUSR)
+        time.sleep(TIMETOSLEEP)
