@@ -6,72 +6,56 @@ import threading
 
 import wx
 
-from eiisclient import (CONFIGFILENAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, WORKDIR, __author__, __division__,
-                        __email__, __version__)
+from eiisclient import (CONFIG_FILE_NAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, PROFILE_INSTALL_PATH,
+                        WORK_DIR, __author__, __division__, __email__, __version__)
 from eiisclient.core.exceptions import DispatcherActivationError, PacketDeleteError
 from eiisclient.core.manage import Manager
-from eiisclient.core.utils import get_config_data, hash_calc, to_json
+from eiisclient.core.utils import ConfigDict, get_config_data, hash_calc, to_json
 from eiisclient.gui import main
 
 
 class MainFrame(main.fmMain):
     def __init__(self):
         super(MainFrame, self).__init__(None)
-
-        if not os.path.exists(WORKDIR):
-            os.makedirs(WORKDIR, exist_ok=True)
-
         self.logger = self.get_logger()
+        self.logger.info('Инициализация программы')
+        self.logger.info('-' * 100)
+
+        if not os.path.exists(WORK_DIR):
+            os.makedirs(WORK_DIR, exist_ok=True)
+
+        self.config = ConfigDict()
+        self.manager = None
+
+        # инициализация параметров
+        self.config.threads = 1
+        self.config.purge = False
+        self.config.encode = DEFAULT_ENCODING
+        self.config.ftpencode = DEFAULT_ENCODING
+        self.config.install_to_profile = False
+        # обновление параметров из файла
+        self.config.update(get_config_data(WORK_DIR))
+
         self.wxLogView.Clear()
+        self.init_manager()
+        self.refresh_gui()
         self.Show()
 
-        self.local_index = None
-        self.new_index = None
-        self.local_index_hash = None
-        self.new_index_hash = None
-        self.active_packet_list = None
-        self.repopath = None
-        self.eiispath = None
-        self.manager = None
-        self.last_update_date = None
-
-        self.logger.debug('Инициализация программы.')
-        self.init()
-
-    def init(self, full=False):
-        """"""
-        config = get_config_data(WORKDIR)
-
-        self.threads = config.get('threads', 1)
-        self.encode = config.get('encode', DEFAULT_ENCODING)
-        self.ftpencode = config.get('ftpencode', self.encode)
-        self.purge = config.get('purge', False)
-        self.repopath = config.get('repopath', '')
-        self.eiispath = config.get('eiispath', DEFAULT_INSTALL_PATH)
-
+    def init_manager(self, full=False):
         try:
-            self.manager = Manager(self.repopath,
-                                   eiispath=self.eiispath,
-                                   logger=self.logger,
-                                   encode=self.encode,
-                                   ftpencode=self.ftpencode,
-                                   purge=self.purge,
-                                   threads=self.threads,
-                                   full=full
-                                   )
+            self.manager = Manager(self.config, logger=self.logger, full=full)
         except Exception as err:
             self.logger.error('Ошибка инициализации менеджера: {}'.format(err))
             self.manager = None
         else:
             self.logger.debug('Менеджер инициализирован: {}'.format(self.manager))
-            self._init_gui()
 
-    def _init_gui(self):
+    def refresh_gui(self):
         try:
             self.update_packet_list()
             self.update_info_view()
         except UnicodeDecodeError:
-            self.logger.error('Указана неверная кодировка сервера: {}'.format(self.manager.ftpencode))
+            self.logger.error('Указана неверная кодировка сервера: {}'.format(self.config.ftpencode))
         except DispatcherActivationError as err:
             self.logger.error('Ошибка активации диспетчера: {}'.format(err))
         except Exception as err:
@@ -112,7 +96,7 @@ class MainFrame(main.fmMain):
         thread.start()
 
     def on_refresh(self, event):
-        self._init_gui()
+        self.refresh_gui()
 
     def on_btFull(self, event):
         if self.btFull.IsChecked():
@@ -161,28 +145,30 @@ class MainFrame(main.fmMain):
 
     # logic functions
     def run(self):
-        installed = self.manager.get_installed_packages()
-        selected = self.get_selected_packages()
-
-        # деактивация элементов интерфейса от ненужных нажатий
-        self.wxPacketList.Disable()
-        self.btUpdate.Disable()
-        self.btRefresh.Disable()
-        self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=False)
-        self.menuService.Enable(id=self.menuConfig.GetId(), enable=False)
-        self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=False)
-        self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=False)
-        self.menuService.Enable(id=self.btFull.GetId(), enable=False)
-
         try:
             self.manager.activate()
-            self.logger.info('Начинаем...')
+            self.logger.info('[Начинаем обновление]')
+            installed = self.manager.get_installed_packages()
+            selected = self.get_selected_packages()
+
+            # деактивация элементов интерфейса от ненужных нажатий
+            self.wxPacketList.Disable()
+            self.btUpdate.Disable()
+            self.btRefresh.Disable()
+            self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=False)
+            self.menuService.Enable(id=self.menuConfig.GetId(), enable=False)
+            self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=False)
+            self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=False)
+            self.menuService.Enable(id=self.btFull.GetId(), enable=False)
+            #
             self.manager.start(installed, selected)
         except Exception as err:
             self.logger.error(err)
-
+        else:
+            self.logger.info('[Обновление завершено]')
+            self.logger.info(100 * '-')
+            self.refresh_gui()
         finally:
-            self._init_gui()
             self.manager.deactivate()
 
             # возврат элементов в изначальное состояние
@@ -196,9 +182,6 @@ class MainFrame(main.fmMain):
             self.btRefresh.Enable()
             self.btFull.Check(False)
             self.on_btFull(None)
-
-            self.logger.info('Закончили...')
-            self.logger.info(50 * '-')
 
     def log_append(self, message, level=None):
 
@@ -219,11 +202,9 @@ class MainFrame(main.fmMain):
         try:
             self.wxPacketList.Freeze()
             self.wxPacketList.Clear()
-
             local_index = self.manager.get_local_index()
-
             if not local_index:
-                self.logger.info('Загрузка индекса')
+                self.logger.info('Локальный индекс-файл отсутствует. Загрузка с сервера')
                 self.manager.activate()
                 local_index = self.manager.remote_index
                 self.manager.deactivate()
@@ -242,26 +223,31 @@ class MainFrame(main.fmMain):
 
             self.wxPacketList.SetCheckedStrings(active_list)  # проставить активные подсистемы
 
+        except DispatcherActivationError as err:
+            self.logger.error('Ошибка активации диспетчера: {}'.format(err))
+            self.logger.error('Не удалось загрузить индекс-файл')
         finally:
             self.wxPacketList.Thaw()
 
     def update_info_view(self):
-        self.wxInfoView.Freeze()
-        self.wxInfoView.SetPage('')
-        self.wxInfoView.AppendToPage('<h5 align="center">Программа обновления подсистем ЕИИС "Соцстрах" </h5><hr>')
+        try:
+            self.wxInfoView.Freeze()
+            self.wxInfoView.SetPage('')
+            self.wxInfoView.AppendToPage(
+                '<h5 align="center">Программа обновления подсистем <em>ЕИИС "Соцстрах"</em></h5><hr>')
 
-        if self.manager is None:
-            self.wxInfoView.AppendToPage('<p style="color: red;">Программа не проинициализирована.</p>')
-        else:
             info = self.manager.get_info()
 
-            self.wxInfoView.AppendToPage('<table><tbody>')
+            self.wxInfoView.AppendToPage('<table>')
 
             for key, value in sorted(info.items()):
                 self.wxInfoView.AppendToPage(
-                    '<tr><td width="200">{}</td><td width="400">{}</td></tr>'.format(key, value))
+                    '<tr>'
+                    '<td>{}</td>'
+                    '<td>: <strong>{}</strong></td>'
+                    '</tr>'.format(key, value))
 
-            self.wxInfoView.AppendToPage('</tbody></table>')
+            self.wxInfoView.AppendToPage('</table>')
 
             abandoned = [n for n in self.wxPacketList.GetCheckedStrings() if n.startswith('[!]')]
             if len(abandoned):
@@ -273,7 +259,16 @@ class MainFrame(main.fmMain):
                     self.wxInfoView.AppendToPage('<li>{}</li>'.format(name))
                 self.wxInfoView.AppendToPage('<ul>')
 
-        self.wxInfoView.Thaw()
+            removed = self.manager.get_removed_packages()
+            if len(removed):
+                self.wxInfoView.AppendToPage('<hr><p>Подсистемы, помеченные как <em>удаленные</em>:</p>')
+                self.wxInfoView.AppendToPage('<ul>')
+                for package in removed:
+                    self.wxInfoView.AppendToPage('<li><b>{}</b></li>'.format(package.split('.')[0]))
+                self.wxInfoView.AppendToPage('</ul><hr>')
+
+        finally:
+            self.wxInfoView.Thaw()
 
     def get_selected_packages(self):
         return self.wxPacketList.GetCheckedStrings()
@@ -315,34 +310,31 @@ class WxLogHandler(logging.StreamHandler):
 
 class ConfigFrame(main.fmConfig):
     """"""
-    def __init__(self, main_frame: MainFrame, *args, **kwargs):
-        self.main_frame = main_frame
+
+    def __init__(self, mframe: MainFrame, *args, **kwargs):
         super(ConfigFrame, self).__init__(*args, **kwargs)
-
-        self.config = get_config_data(WORKDIR)
+        self.config = mframe.config
+        self.mframe = mframe
         self.config_hash = hash_calc(self.config)
+        # fix eiis install path states
+        self.install_to_profile = self.config.install_to_profile
+        self.eiis_path = PROFILE_INSTALL_PATH if self.install_to_profile else DEFAULT_INSTALL_PATH
 
-        ##
-        self.wxRepoPath.Value = self.config.get('repopath',
-                                                'ftp://10.66.2.131')  # fixme: значение пути сервера репозитория - временно
-
-        self.eiis_path_user = os.path.join(os.path.expandvars('%APPDATA%'), r'ЕИИС ФСС РФ')
-        config_install_path = self.config.get('eiispath', DEFAULT_INSTALL_PATH)
-        if config_install_path == self.eiis_path_user:  # путь установки
-            self.wxInstallToUserProfile.SetValue(True)
+        self.wxRepoPath.Value = self.config.repopath or ''
+        self.wxInstallToUserProfile.SetValue(self.config.install_to_profile)
+        if self.config.install_to_profile:  # путь установки
+            self.wxEiisInstallPath.SetPath(PROFILE_INSTALL_PATH)
         else:
-            self.wxInstallToUserProfile.SetValue(False)
-        self.wxEiisInstallPath.SetPath(config_install_path)
+            self.wxEiisInstallPath.SetPath(DEFAULT_INSTALL_PATH)
         self.wxEiisInstallPath.Enable(False)
 
-        self.wxThreadsCount.Select(self.config.get('threads', 1) - 1)
-        self.wxPurgePackets.SetValue(self.config.get('purge', False))
-        ## значение кодировки файлов временно заблокировано до перехода на UTF-8
+        self.wxThreadsCount.Select(self.config.threads)
+        self.wxPurgePackets.SetValue(self.config.purge)
+        # значение кодировки файлов временно заблокировано до перехода на UTF-8
         # self.wxEncode.SetValue(self.config.get('encode', 'UTF-8'))
         self.wxEncode.SetValue('CP1251')
         self.wxEncode.Enable(False)
-
-        self.wxFTPEncode.SetValue(self.config.get('ftpencode', 'UTF-8'))
+        self.wxFTPEncode.SetValue(self.config.ftpencode)
 
         self.sdApply.Label = 'Применить'
         self.sdCancel.Label = 'Отменить'
@@ -350,55 +342,58 @@ class ConfigFrame(main.fmConfig):
 
     def on_eiis_path_click(self, event=None):
         if self.wxInstallToUserProfile.GetValue():
-            path = self.eiis_path_user
+            self.wxEiisInstallPath.SetPath(PROFILE_INSTALL_PATH)
         else:
-            path = DEFAULT_INSTALL_PATH
-        self.wxEiisInstallPath.SetPath(path)
+            self.wxEiisInstallPath.SetPath(DEFAULT_INSTALL_PATH)
 
     def Apply(self, event):
-        if self.wxRepoPath.GetValue() == '':
+        if not self.wxRepoPath.GetValue():
             wx.MessageBox('Укажите путь к репозиторию',
                           'Настройки', wx.ICON_EXCLAMATION, None)
             return
 
-        self.config['repopath'] = self.wxRepoPath.GetValue()
-        self.config['eiispath'] = self.wxEiisInstallPath.GetPath()
-        self.config['threads'] = int(self.wxThreadsCount.Selection) + 1
-        self.config['purge'] = self.wxPurgePackets.GetValue()
-        self.config['encode'] = self.wxEncode.GetValue().upper()
-        self.config['ftpencode'] = self.wxFTPEncode.GetValue().upper()
+        self.config.repopath = self.wxRepoPath.GetValue()
+        # self.config.eiispath = self.wxEiisInstallPath.GetPath()
+        self.config.install_to_profile = self.wxInstallToUserProfile.GetValue()
+        self.config.threads = int(self.wxThreadsCount.Selection) + 1
+        self.config.purge = self.wxPurgePackets.GetValue()
+        # self.config.encode = self.wxEncode.GetValue().upper()
+        self.config.ftpencode = self.wxFTPEncode.GetValue().upper()
 
         #  write to file if changed
         if not hash_calc(self.config) == self.config_hash:
             full = False
 
-            if not self.config['eiispath'] == self.main_frame.eiispath:
+            if not self.config.install_to_profile == self.install_to_profile:
 
-                packages = os.listdir(self.main_frame.eiispath)
-                new_eiis_path = self.config['eiispath']
+                packages = os.listdir(self.eiis_path)
                 if packages:
                     dlg = wx.MessageDialog(None, 'Скопировать существующие подсистемы по новому пути?',
                                            'Копирование пакетов', wx.YES_NO | wx.ICON_QUESTION)
 
                     if dlg.ShowModal() == wx.ID_YES:
+                        new_eiis_path = PROFILE_INSTALL_PATH if self.config.install_to_profile else DEFAULT_INSTALL_PATH
                         for package in packages:
-                            src = os.path.join(self.main_frame.eiispath, package)
+                            src = os.path.join(self.eiis_path, package)
                             dst = os.path.join(new_eiis_path, package)
                             try:
-                                self.main_frame.manager.move_package(src, dst)
+                                self.mframe.manager.move_package(src, dst)
                             except Exception as err:
-                                self.main_frame.logger.warning('Не удалось переместить пакет {} в {}: {}'.format(
+                                self.mframe.logger.warning('Не удалось переместить пакет {} в {}: {}'.format(
                                     package, new_eiis_path, err))
-                                self.main_frame.logger.warning(
+                                self.mframe.logger.warning(
                                     'Не достаточно прав доступа или не закрыты файлы подсистемы')
 
-                full = True
+                full = True  # флаг смены пути для менеджера
 
-            confile = os.path.join(WORKDIR, CONFIGFILENAME)
+            confile = os.path.join(WORK_DIR, CONFIG_FILE_NAME)
             with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
                 fp.write(to_json(self.config))
 
-            self.main_frame.init(full)  # reread config and set new manager
+            self.mframe.init_manager(full)  # set new manager
+            self.mframe.refresh_gui()  # update gui
+            self.mframe.logger.info('Настройки применены')
+            self.mframe.logger.info('-' * 100)
 
         self.Destroy()
 

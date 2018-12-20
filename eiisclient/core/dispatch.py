@@ -7,6 +7,7 @@ import shutil
 import stat
 import time
 import weakref
+from datetime import datetime
 
 from eiisclient import DEFAULT_ENCODING
 from eiisclient.core.utils import from_json, get_temp_dir, gzip_read
@@ -122,6 +123,9 @@ class BaseDispatcher(object):
     def get_index_data(self):
         pass
 
+    def index_create_date(self):
+        pass
+
     def _init_log(self):
         self.logger.debug('{}: encode: {}'.format(self, self.encode))
         self.logger.debug('{}: tmpdir: {}'.format(self, self.tempdir.name))
@@ -174,6 +178,10 @@ class FileDispatcher(BaseDispatcher):
         index_file_path = os.path.join(self.repopath, self.index_file_name)
         return from_json(gzip_read(index_file_path, encode=self.encode))
 
+    @property
+    def index_create_date(self) -> datetime:
+        return os.path.getctime(os.path.join(self.repopath, self.index_file_name))
+
 
 class SMBDispatcher(FileDispatcher):
     ''''''
@@ -194,8 +202,9 @@ class FTPDispatcher(BaseDispatcher):
         self.password = None
         self.repo = None
         self._parse_url_data(repo)
-        self.ftp = self._ftp_init()
+        self.ftp = self._get_connection()
         self._finalizer = weakref.finalize(self, self.close)
+        self.index_file_path = os.path.join(self.repopath, self.index_file_name)
 
     def __repr__(self):
         return 'FTP Dispatcher  <{}> on <{}{}>'.format(id(self), self.hostname, self.repo)
@@ -209,7 +218,7 @@ class FTPDispatcher(BaseDispatcher):
         self.password = data.password
         self.repo = data.path or '/'
 
-    def _ftp_init(self):
+    def _get_connection(self):
         from ftplib import FTP
         ftp = FTP()
         ftp.encoding = self.ftpencode
@@ -227,7 +236,7 @@ class FTPDispatcher(BaseDispatcher):
             self.ftp.sendcmd('NOOP')
         except error_temp as err:
             if err and err.args[0].startswith('421'):
-                self.ftp = self._ftp_init()
+                self.ftp = self._get_connection()
             else:
                 raise ConnectionError from err
 
@@ -281,9 +290,13 @@ class FTPDispatcher(BaseDispatcher):
             return ''
 
     def get_index_data(self):
-        index_file_path = os.path.join(self.repopath, self.index_file_name)
-        fp = self.get_file(index_file_path)
+        fp = self.get_file(self.index_file_path)
         return from_json(gzip_read(fp, encode=self.encode))
+
+    @property
+    def index_create_date(self) -> datetime:
+        mdate_as_string = self.ftp.sendcmd('MDTM %s' % self.index_file_path).split()[1]
+        return datetime.strptime(mdate_as_string, '%Y%m%d%H%M%S')
 
 
 class Dispatcher(object):

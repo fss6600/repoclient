@@ -10,7 +10,8 @@ from logging.handlers import RotatingFileHandler
 
 import wx
 
-from eiisclient import CONFIGFILENAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, SELECTEDFILENAME, WORKDIR, __version__
+from eiisclient import (CONFIG_FILE_NAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, SELECTED_FILE_NAME, WORK_DIR,
+                        __version__)
 from eiisclient.core.exceptions import DispatcherActivationError, NoUpdates, RepoIsBusy
 from eiisclient.core.manage import Manager
 from eiisclient.core.utils import get_config_data, to_json
@@ -99,7 +100,7 @@ def main():  # pragma: no cover
             logger.setLevel(logging.INFO)
 
         if args.log:
-            logfile = os.path.join(WORKDIR, 'messages.log')
+            logfile = os.path.join(WORK_DIR, 'messages.log')
             log_handler = RotatingFileHandler(logfile, maxBytes=1024 * 1024, encoding=args.encode or DEFAULT_ENCODING)
             logger.addHandler(log_handler)
 
@@ -108,7 +109,7 @@ def main():  # pragma: no cover
         con_handler.setFormatter(con_formatter)
         logger.addHandler(con_handler)
 
-        config = get_config_data(WORKDIR)
+        config = get_config_data(WORK_DIR)
         repopath = args.repopath or config.get('repopath', None)
 
         if not repopath:
@@ -121,10 +122,10 @@ def main():  # pragma: no cover
         purge = args.purge or config.get('purge', False)
 
         if args.command == 'init':
-            if not os.path.exists(WORKDIR):
-                os.makedirs(WORKDIR, exist_ok=True)
+            if not os.path.exists(WORK_DIR):
+                os.makedirs(WORK_DIR, exist_ok=True)
 
-            confile = os.path.join(WORKDIR, CONFIGFILENAME)
+            confile = os.path.join(WORK_DIR, CONFIG_FILE_NAME)
             confdata = {
                 'repopath': repopath,
                 'eiispath': eiis_path,
@@ -136,7 +137,7 @@ def main():  # pragma: no cover
             with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
                 fp.write(to_json(confdata))
 
-            selected_file_name = os.path.join(WORKDIR, SELECTEDFILENAME)
+            selected_file_name = os.path.join(WORK_DIR, SELECTED_FILE_NAME)
             if not os.path.exists(selected_file_name):
                 with open(selected_file_name, 'wb') as fp:
                     fp.write('# Данный файл используется только при работе из консоли\n'.encode(encode))

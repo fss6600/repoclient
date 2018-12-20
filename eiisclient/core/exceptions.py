@@ -46,6 +46,16 @@ class LinkUpdateError(Exception):
     pass
 
 
+class LinkNoData(Exception):
+    pass
+
+
+class LinkDisabled(Exception):
+    pass
+
+
+
+
 class InstallPermissionError(Exception):
     def __init__(self, message=None):
         self.message = message or ''

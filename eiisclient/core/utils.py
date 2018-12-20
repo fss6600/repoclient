@@ -81,3 +81,19 @@ def chwmod(fpath):
     if not os.access(fpath, os.W_OK):
         os.chmod(fpath, stat.S_IWUSR)
         time.sleep(TIMETOSLEEP)
+
+
+class ConfigDict(dict):
+    """Класс для хранения данных параметров программы с возможностью доступа к данным через атрибуты.
+    При отсутствии запрашиваемого атрибута или ключа, возвращает None, вместо ошибки KeyError
+    """
+    __setattr__ = dict.__setitem__
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __getattr__(self, item):
+        if item not in self:
+            return None
+        else:
+            return self.__getitem__(item)
