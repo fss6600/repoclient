@@ -3,7 +3,7 @@
 
 class RepoIsBusy(Exception):
     def __str__(self):
-        return 'Репозиторий заблокирован для обновлеия. Попробуйте позднее'
+        return 'Репозиторий заблокирован для обновлеия. Попробуйте позднее.'
 
 
 class NoUpdates(Exception):

@@ -6,8 +6,9 @@ import threading
 
 import wx
 
-from eiisclient import (CONFIG_FILE_NAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, PROFILE_INSTALL_PATH,
-                        WORK_DIR, __author__, __division__, __email__, __version__)
+from eiisclient import (CONFIG_FILE_NAME, DEFAULT_ENCODING, DEFAULT_FTP_ENCODING, DEFAULT_FTP_SERVER,
+                        DEFAULT_INSTALL_PATH, PROFILE_INSTALL_PATH, WORK_DIR, __author__, __division__, __email__,
+                        __version__)
 from eiisclient.core.exceptions import DispatcherActivationError, PacketDeleteError
 from eiisclient.core.manage import Manager
 from eiisclient.core.utils import ConfigDict, get_config_data, hash_calc, to_json
@@ -20,6 +21,8 @@ class MainFrame(main.fmMain):
         self.logger = self.get_logger()
         self.logger.info('Инициализация программы')
         self.logger.info('-' * 100)
+        self.logger.info('ЗАКРОЙТЕ ОТКРЫТЫЕ ПОДСИСТЕМЫ ПЕРЕД НАЧАЛОМ ОБНОВЛЕНИЯ!')
+        self.logger.info('-' * 100)
 
         if not os.path.exists(WORK_DIR):
             os.makedirs(WORK_DIR, exist_ok=True)
@@ -28,17 +31,25 @@ class MainFrame(main.fmMain):
         self.manager = None
 
         # инициализация параметров
+        self.config.repopath = DEFAULT_FTP_SERVER  # настройка для филиалал №2 - will remove
         self.config.threads = 1
         self.config.purge = False
         self.config.encode = DEFAULT_ENCODING
-        self.config.ftpencode = DEFAULT_ENCODING
+        self.config.ftpencode = DEFAULT_FTP_ENCODING
         self.config.install_to_profile = False
         # обновление параметров из файла
         self.config.update(get_config_data(WORK_DIR))
 
-        self.wxLogView.Clear()
         self.init_manager()
-        self.refresh_gui()
+        self.wxPacketList.Clear()
+        self.wxLogView.Clear()
+
+        if not hasattr(self.config, 'repopath'):
+            self.logger.error('Программа не инициализирована. Проверьте настройки:')
+            self.logger.error('\t- не указан путь к репозиторию')
+        else:
+            self.refresh_gui()
+
         self.Show()
 
     def init_manager(self, full=False):
@@ -117,6 +128,7 @@ class MainFrame(main.fmMain):
                 self.logger.error('Ошибка при очистке удаленных пакетов: {}'.format(err))
             else:
                 self.logger.info('Очистка завершена')
+                self.refresh_gui()
 
     def on_menu_select_all(self, event):
         dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УСТАНОВИТЬ ВСЕ ПАКЕТЫ?',
@@ -139,6 +151,7 @@ class MainFrame(main.fmMain):
         res = self.manager.clean_buffer()
         if res:
             self.logger.info('Буфер очищен')
+            self.refresh_gui()
 
     def on_links_update(self, event):
         self.manager.update_links()
