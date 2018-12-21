@@ -366,7 +366,7 @@ class Manager(object):
         if action == Action.install:
             self.logger.info('Обработка данных на установку пакетов:')
             for package in seq:
-                self.logger.info('\tустановка - "{}"'.format(package))
+                self.logger.info('\t"{}"'.format(package))
                 self.claim_packet(package)
                 files = self.remote_index[package]['files']
 
@@ -387,7 +387,7 @@ class Manager(object):
                     self.local_index[package] = {'hash': '', 'files': {}, 'phash': ''}
 
                 if self.full or not self.local_index[package]['phash'] == self.remote_index[package]['phash']:
-                    self.logger.info('\tобновление - "{}"'.format(package))
+                    self.logger.info('\t"{}"'.format(package))
                     local_files = self.local_index[package]['files']
                     remote_files = self.remote_index[package]['files']
 
@@ -417,7 +417,7 @@ class Manager(object):
         elif action == Action.delete:
             self.logger.info('Обработка данных на удаление пакетов:')
             for package in seq:
-                self.logger.info('\tудаление - "{}"'.format(package))
+                self.logger.info('\t"{}"'.format(package))
                 yield package
 
         else:
@@ -514,7 +514,7 @@ class Manager(object):
                 raise PacketInstallError('Ошибка при установке пакета {}: {}'.format(package, err))
             else:
                 self.logger.debug('\t{} перемещен из буфера в {}'.format(package, dst))
-                self.logger.info('\tобработан - "{}"'.format(package))
+                self.logger.info('\tустановлен - "{}"'.format(package))
 
     def update_links(self):
         self.logger.info('Обновление ярлыков на рабочем столе')
