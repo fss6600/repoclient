@@ -8,8 +8,10 @@
 ###########################################################################
 
 import wx
-import wx.xrc
+import wx.adv
 import wx.html
+import wx.xrc
+
 
 ###########################################################################
 ## Class fmMain
@@ -120,12 +122,13 @@ class fmMain ( wx.Frame ):
         self.btUpdate.SetHelpText( u"Запустить процесс обновления/установки" )
         
         bSizer12.Add( self.btUpdate, 0, wx.ALL, 5 )
-        
-        self.wxGauge = wx.Gauge( self.m_panel6, wx.ID_ANY, 100, wx.DefaultPosition, wx.Size( -1,-1 ), wx.GA_HORIZONTAL )
-        self.wxGauge.SetValue( 10 ) 
-        self.wxGauge.Hide()
-        
-        bSizer12.Add( self.wxGauge, 1, wx.ALIGN_CENTER_VERTICAL|wx.RESERVE_SPACE_EVEN_IF_HIDDEN|wx.ALL, 5 )
+
+        bSizer12.Add((0, 0), 1, wx.EXPAND, 5)
+
+        self.m_hyperlink2 = wx.adv.HyperlinkCtrl(self.m_panel6, wx.ID_ANY, u"Руководство",
+                                                 u"http://www.fss6602.lan/wiki/obnovlenie-podsistem-eiis-socstrah-klient/",
+                                                 wx.DefaultPosition, wx.DefaultSize, wx.adv.HL_DEFAULT_STYLE)
+        bSizer12.Add(self.m_hyperlink2, 0, wx.ALL, 5)
         
         
         bSizer11.Add( bSizer12, 0, wx.EXPAND, 5 )
@@ -150,7 +153,8 @@ class fmMain ( wx.Frame ):
         self.wxStatusBar = self.CreateStatusBar( 1, wx.STB_SIZEGRIP, wx.ID_ANY )
         self.wxMenuBar = wx.MenuBar( 0 )
         self.menuFile = wx.Menu()
-        self.menuitemUpdate = wx.MenuItem( self.menuFile, wx.ID_ANY, u"Обновить"+ u"\t" + u"F5", u"Обновить пакеты", wx.ITEM_NORMAL )
+        self.menuitemUpdate = wx.MenuItem(self.menuFile, wx.ID_ANY, u"Обновить список пакетов" + u"\t" + u"F5",
+                                          u"Обновить список пакетов подсистем", wx.ITEM_NORMAL)
         self.menuFile.Append( self.menuitemUpdate )
         
         self.menuFile.AppendSeparator()
@@ -176,7 +180,8 @@ class fmMain ( wx.Frame ):
         self.menuService.Append( self.menuConfig )
         
         self.m_menu1 = wx.Menu()
-        self.menuitemPurge = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Удалить подсистемы", u"Удаление неиспользуемых подсистем с компьютера", wx.ITEM_NORMAL )
+        self.menuitemPurge = wx.MenuItem(self.m_menu1, wx.ID_ANY, u"Удалить подсистемы, помеченные как \"удаленные\"",
+                                         u"Удаление неиспользуемых подсистем с компьютера", wx.ITEM_NORMAL)
         self.m_menu1.Append( self.menuitemPurge )
         
         self.menuitemCleanBuffer = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Очистить буфер", u"Очистить буфер", wx.ITEM_NORMAL )
@@ -195,7 +200,8 @@ class fmMain ( wx.Frame ):
         self.wxMenuBar.Append( self.menuService, u"Сервис" ) 
         
         self.menuHelp = wx.Menu()
-        self.menuitemManual = wx.MenuItem( self.menuHelp, wx.ID_ANY, u"Руководство"+ u"\t" + u"F1", u"Открыть файл с руководством по работе с программой", wx.ITEM_NORMAL )
+        self.menuitemManual = wx.MenuItem(self.menuHelp, wx.ID_ANY, u"Руководство" + u"\t" + u"F1",
+                                          u"Открыть руководство по работе с программой", wx.ITEM_NORMAL)
         self.menuHelp.Append( self.menuitemManual )
         
         self.menuHelp.AppendSeparator()
@@ -225,6 +231,7 @@ class fmMain ( wx.Frame ):
         self.Bind( wx.EVT_MENU, self.on_clean_buffer, id = self.menuitemCleanBuffer.GetId() )
         self.Bind( wx.EVT_MENU, self.on_links_update, id = self.menuitemLinksUpdate.GetId() )
         self.Bind( wx.EVT_MENU, self.on_btFull, id = self.btFull.GetId() )
+        self.Bind(wx.EVT_MENU, self.on_help, id=self.menuitemManual.GetId())
         self.Bind( wx.EVT_MENU, self.on_about, id = self.menuitemHelp.GetId() )
     
     def __del__( self ):
@@ -270,6 +277,9 @@ class fmMain ( wx.Frame ):
         pass
     
     def on_btFull( self, event ):
+        pass
+
+    def on_help(self, event):
         pass
     
     def on_about( self, event ):
