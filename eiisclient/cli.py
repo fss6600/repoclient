@@ -10,7 +10,8 @@ from logging.handlers import RotatingFileHandler
 
 import wx
 
-from eiisclient import (CONFIG_FILE_NAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH, SELECTED_FILE_NAME, WORK_DIR,
+from eiisclient import (CONFIG_FILE_NAME, DEFAULT_ENCODING, DEFAULT_INSTALL_PATH,
+                        PROFILE_INSTALL_PATH, SELECTED_FILE_NAME, WORK_DIR,
                         __version__)
 from eiisclient.core.exceptions import DispatcherActivationError, NoUpdates, RepoIsBusy
 from eiisclient.core.manage import Manager
@@ -29,7 +30,7 @@ repopath - полный путь к репозиторию:
     X:\path\to\eiisrepo
     \\path\to\eiisrepo
     ftp://[user:name@]ftpserver/path/to/eiisrepo
-    
+
 eiispath - полный путь для установки подсистем:
     X:\path\to\eiispath
 
@@ -61,8 +62,8 @@ def get_args():
                         default=None, help="удаление подсистем с диска")
     parser.add_argument("--threads", dest='threads', type=int, metavar='N',
                         default=None, help="количество потоков для загрузки")
-    parser.add_argument("--eiispath", dest='eiispath', type=str,
-                        default=None, help="полный путь установки подсистем")
+    parser.add_argument("--profile", dest='profile', action='store_true',
+                        default=None, help="устанавливать в профиль пользователя")
     parser.add_argument("--repopath", dest='repopath', type=str,
                         default=None, help="полный путь к репозиторию")
     parser.add_argument("--encode", dest='encode', type=str,
@@ -115,7 +116,7 @@ def main():  # pragma: no cover
         if not repopath:
             return 'Не указан репозиторий'
 
-        eiis_path = args.eiispath or config.get('eiispath', DEFAULT_INSTALL_PATH)
+        install_to_profile = args.profile or config.get('install_to_profile', False)
         threads = args.threads or config.get('threads', 1)
         encode = args.encode or config.get('encode', DEFAULT_ENCODING)
         ftpencode = args.ftpencode or config.get('ftpencode', encode)
@@ -128,7 +129,7 @@ def main():  # pragma: no cover
             confile = os.path.join(WORK_DIR, CONFIG_FILE_NAME)
             confdata = {
                 'repopath': repopath,
-                'eiispath': eiis_path,
+                'install_to_profile': install_to_profile,
                 'threads': threads,
                 'encode': encode,
                 'purge': purge,
@@ -144,6 +145,8 @@ def main():  # pragma: no cover
                     fp.write('# Добавьте наименования пакетов для установки подсистемы по одному на строку\n\n'.encode(encode))
             return ('Инициализация прошла успешно')
 
+
+        eiis_path = PROFILE_INSTALL_PATH if install_to_profile else DEFAULT_INSTALL_PATH
         manager = Manager(repopath, logger=logger, eiispath=eiis_path, encode=encode,
                           ftpencode=ftpencode, threads=threads, purge=purge)
 
