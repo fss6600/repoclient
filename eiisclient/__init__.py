@@ -3,10 +3,12 @@
 """Top-level package for eiisclient."""
 import os
 
+from .version import get_version
+
 __author__ = 'Михаил Петров'
 __email__ = 'mb.petrov@ro66.fss.ru'
 __division__ = 'филиал №2 ГУ СРО ФСС РФ'
-__version__ = '0.1.13'
+__version__ = get_version()
 __license__ = 'BSD'
 
 DEFAULT_FTP_SERVER = 'ftp://10.66.2.131'

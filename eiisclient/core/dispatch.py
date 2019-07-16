@@ -179,7 +179,7 @@ class FileDispatcher(BaseDispatcher):
     @property
     def index_create_date(self) -> datetime:
         timestamp = os.path.getmtime(os.path.join(self.repopath, self.index_file_name))
-        return datetime.utcfromtimestamp(timestamp)
+        return datetime.fromtimestamp(timestamp)
 
 
 class SMBDispatcher(FileDispatcher):
