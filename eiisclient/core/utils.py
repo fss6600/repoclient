@@ -36,8 +36,7 @@ def gzip_read(gzfile, encode=DEFAULT_ENCODING):  # pragma: no cover
         return gf.read()
 
 
-def get_temp_dir(prefix=None):  # pragma: no cover
-    prefix = prefix or ''
+def get_temp_dir(prefix=''):  # pragma: no cover
     return TemporaryDirectory(prefix=prefix, dir=os.path.expandvars('%TEMP%'))
 
 
@@ -84,7 +83,9 @@ def chwmod(fpath):
 
 
 class ConfigDict(dict):
-    """Класс для хранения данных параметров программы с возможностью доступа к данным через атрибуты.
+    """Настройки программы
+
+    Класс для хранения данных параметров программы с возможностью доступа к данным через атрибуты.
     При отсутствии запрашиваемого атрибута или ключа, возвращает None, вместо ошибки KeyError
     """
     __setattr__ = dict.__setitem__
