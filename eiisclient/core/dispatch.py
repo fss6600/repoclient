@@ -21,14 +21,14 @@ class BaseDispatcher(object):
     index_hash_file_name = 'Index.gz.sha1'
 
     def __init__(self, *args, **kwargs):
-        self.repo = None
+        self._repo = None
         self.logger = kwargs.get('logger')
         self.encode = kwargs.get('encode', DEFAULT_ENCODING)
         self.tempdir = get_temp_dir(prefix='disp_')
 
     @property
     def repopath(self):
-        return self.repo
+        return self._repo
 
     def _clean_dir(self, dirpath, onerror=False):
         for fp, _ in self.walk_dir(dirpath):
@@ -129,19 +129,19 @@ class BaseDispatcher(object):
     def _init_log(self):
         self.logger.debug('{}: encode: {}'.format(self, self.encode))
         self.logger.debug('{}: tmpdir: {}'.format(self, self.tempdir.name))
-        self.logger.debug('{}: repo: {}'.format(self, self.repo))
+        self.logger.debug('{}: repo: {}'.format(self, self.repopath))
 
     def close(self):
         pass
 
 
 class FileDispatcher(BaseDispatcher):
-    ''''''
+    """"""
 
     def __init__(self, repo, *args, **kwargs):
         """"""
         super(FileDispatcher, self).__init__(*args, **kwargs)
-        self.repo = repo
+        self._repo = repo
         if self.logger.level == logging.DEBUG:
             self._init_log()
 
@@ -164,7 +164,7 @@ class FileDispatcher(BaseDispatcher):
         return dst
 
     def repo_is_busy(self):
-        return BUSYMESSAGE in os.listdir(self.repo)
+        return BUSYMESSAGE in os.listdir(self.repopath)
 
     def get_index_hash(self):
         index_hash_file_path = os.path.join(self.repopath, self.index_hash_file_name)
@@ -180,7 +180,8 @@ class FileDispatcher(BaseDispatcher):
 
     @property
     def index_create_date(self) -> datetime:
-        return os.path.getctime(os.path.join(self.repopath, self.index_file_name))
+        timestamp = os.path.getctime(os.path.join(self.repopath, self.index_file_name))
+        return datetime.fromtimestamp(timestamp)
 
 
 class SMBDispatcher(FileDispatcher):
@@ -200,14 +201,14 @@ class FTPDispatcher(BaseDispatcher):
         self.hostname = None
         self.username = None
         self.password = None
-        self.repo = None
+        self._repo = None
         self._parse_url_data(repo)
         self.ftp = self._get_connection()
         self._finalizer = weakref.finalize(self, self.close)
         self.index_file_path = os.path.join(self.repopath, self.index_file_name)
 
     def __repr__(self):
-        return 'FTP Dispatcher  <{}> on <{}{}>'.format(id(self), self.hostname, self.repo)
+        return 'FTP Dispatcher  <{}> on <{}{}>'.format(id(self), self.hostname, self.repopath)
 
     def _parse_url_data(self, repo_string):
         """"""
@@ -216,7 +217,7 @@ class FTPDispatcher(BaseDispatcher):
         self.hostname = data.hostname
         self.username = data.username
         self.password = data.password
-        self.repo = data.path or '/'
+        self._repo = data.path or '/'
 
     def _get_connection(self):
         from ftplib import FTP
@@ -264,7 +265,7 @@ class FTPDispatcher(BaseDispatcher):
         else:
             dst_path = dst
 
-        src_path = self._sanitize_path(os.path.join(self.repo, src))
+        src_path = self._sanitize_path(os.path.join(self.repopath, src))
 
         self._check_connection()
 
@@ -278,7 +279,7 @@ class FTPDispatcher(BaseDispatcher):
 
     def repo_is_busy(self):
         """Проверка на блокировку репозитория"""
-        return BUSYMESSAGE in (fname for fname, _ in self.ftp.mlsd(self.repo))
+        return BUSYMESSAGE in (fname for fname, _ in self.ftp.mlsd(self.repopath))
 
     def get_index_hash(self):
         index_hash_file_path = os.path.join(self.repopath, self.index_hash_file_name)
@@ -305,11 +306,11 @@ class Dispatcher(object):
     def __new__(cls, *args, **kwargs):
         value = args[0].strip('\'').strip('"')
 
-        if re.match(r'[Ff][Tt][Pp]://(\w+:\w+@)?.*', value):
+        if re.match(r'[Ff][Tt][Pp]://([\w.-]+:\w+@)?.*', value):
             return FTPDispatcher(*args, **kwargs)
         elif re.match(r'[A-Za-z]:\\(((\w+)(\\?))+)?', value):
             return FileDispatcher(*args, **kwargs)
-        elif re.match(r'\\\\\w+\\\w+((\\)?(\w+)(\\)?)+', value):
+        elif re.match(r'\\\\[\w.-]+\\\w+((\\)?(\w+)(\\)?)+', value):
             return SMBDispatcher(*args, **kwargs)
         else:
             raise ValueError('Не определен тип репозитория: <{}>'.format(value))
