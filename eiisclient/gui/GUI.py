@@ -44,6 +44,11 @@ class MainFrame(main.fmMain):
         self.wxPacketList.Clear()
         self.wxLogView.Clear()
 
+        self.wxStatusBar.SetFieldsCount(2, [100, 180])
+        # self.SetStatus
+        self.wxStatusBar.SetStatusText('Версия: {}'.format(__version__))
+        self.wxStatusBar.SetStatusText('Обновление ЕИИС "Соцстрах"', 1)
+
         if not hasattr(self.config, 'repopath'):
             self.logger.error('Программа не инициализирована. Проверьте настройки:')
             self.logger.error('\t- не указан путь к репозиторию')
@@ -177,6 +182,7 @@ class MainFrame(main.fmMain):
             self.manager.start(installed, selected)
         except Exception as err:
             self.logger.error(err)
+            self.refresh_gui()
         else:
             self.logger.info('[Обновление завершено]')
             self.logger.info(100 * '-')
@@ -246,14 +252,14 @@ class MainFrame(main.fmMain):
         try:
             self.wxInfoView.Freeze()
             self.wxInfoView.SetPage('')
-            self.wxInfoView.AppendToPage(
-                '<h5 align="center">Программа обновления подсистем <em>ЕИИС "Соцстрах"</em></h5><hr>')
+            # self.wxInfoView.AppendToPage(
+            #     '<h5 align="center">Программа обновления подсистем <em>ЕИИС "Соцстрах"</em></h5><hr>')
 
             info = self.manager.get_info()
 
             self.wxInfoView.AppendToPage('<table>')
 
-            for key, value in sorted(info.items()):
+            for key, value in info.items():
                 self.wxInfoView.AppendToPage(
                     '<tr>'
                     '<td>{}</td>'
@@ -341,7 +347,7 @@ class ConfigFrame(main.fmConfig):
             self.wxEiisInstallPath.SetPath(DEFAULT_INSTALL_PATH)
         self.wxEiisInstallPath.Enable(False)
 
-        self.wxThreadsCount.Select(self.config.threads)
+        self.wxThreadsCount.Select(self.config.threads - 1)
         self.wxPurgePackets.SetValue(self.config.purge)
         # значение кодировки файлов временно заблокировано до перехода на UTF-8
         # self.wxEncode.SetValue(self.config.get('encode', 'UTF-8'))
@@ -412,3 +418,4 @@ class ConfigFrame(main.fmConfig):
 
     def Cancel(self, event):
         self.Destroy()
+

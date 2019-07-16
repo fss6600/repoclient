@@ -8,7 +8,7 @@ import shutil
 import sys
 import threading
 import weakref
-from collections import Counter, namedtuple
+from collections import Counter, OrderedDict, namedtuple
 from collections.abc import Iterable
 from datetime import datetime
 from enum import Enum
@@ -24,7 +24,7 @@ else:
     NOLINKS = False
 
 from eiisclient import (DEFAULT_INSTALL_PATH, PROFILE_INSTALL_PATH,
-                        SELECTED_FILE_NAME, WORK_DIR, __version__)
+                        SELECTED_FILE_NAME, WORK_DIR)
 from eiisclient.core.dispatch import BaseDispatcher, get_dispatcher
 from eiisclient.core.eiisreestr import REESTR
 from eiisclient.core.exceptions import (DispatcherActivationError, DispatcherNotActivated,
@@ -57,6 +57,14 @@ class Manager(object):
     """"""
 
     def __init__(self, config, **kwargs):
+        self.install_to_profile = False
+        self.repopath = None
+        self.encode = None
+        self.ftpencode = None
+        self.threads = None
+        self.purge = False
+
+        #  чтение и присвоение параметров
         for k, v in config.items():
             setattr(self, k, v)
         self.logger = kwargs.get('logger', get_stdout_logger())
@@ -190,11 +198,11 @@ class Manager(object):
         self.remote_index_hash = None
 
     def get_info(self) -> dict:
-        no_data = 'Нет данных'
-        packets_in_repo = no_data
-        local_index_last_change = no_data
-        remote_index_last_change = no_data
-        repo_updated = no_data
+        NO_DATA = 'Нет данных'
+        packets_in_repo = NO_DATA
+        local_index_last_change = NO_DATA
+        remote_index_last_change = NO_DATA
+        repo_updated = NO_DATA
         try:
             self.activate()
 
@@ -205,7 +213,7 @@ class Manager(object):
             remote_index_last_change = self.disp.index_create_date.strftime('%d-%m-%Y %H:%M:%S')
 
             packets_in_repo = len(self.remote_index.keys())
-            repo_updated = 'Да' if self.repo_updated() else 'Нет'
+            repo_updated = 'имеются обновления' if self.repo_updated() else 'нет обновлений'
 
         except DispatcherActivationError:
             pass
@@ -213,17 +221,16 @@ class Manager(object):
         finally:
             self.deactivate()
 
-        info = {
-            'Версия программы': __version__,
-            'Пакетов в репозитории': packets_in_repo,
-            'Установлено подсистем': len(self.get_installed_packages()),
-            'Дата последнего обновления': local_index_last_change,
-            'Дата обновления на сервере': remote_index_last_change,
-            'Наличие обновлений': repo_updated,
-            'Пакетов в буфере': self.buffer_count(),
-            'Путь - подсистемы': self.eiispath,
-            'Путь - репозиторий': self.repopath,
-            }
+        info = OrderedDict()
+        info.setdefault('Дата последнего запуска программы', local_index_last_change)
+        info.setdefault('Дата обновления на сервере', remote_index_last_change)
+        info.setdefault('Наличие обновлений', repo_updated)
+        info.setdefault('Пакетов в репозитории', packets_in_repo)
+        info.setdefault('Установлено подсистем', len(self.get_installed_packages()))
+        info.setdefault('Пакетов в буфере', self.buffer_count())
+        info.setdefault('Путь - подсистемы', self.eiispath)
+        info.setdefault('Путь - репозиторий', self.repopath)
+
         return info
 
     def get_installed_packages(self) -> tuple:
@@ -304,7 +311,7 @@ class Manager(object):
                 raise PacketDeleteError(err)
 
     def get_remote_index(self) -> dict:
-        self.check_repo()  # ???
+        self.check_repo()
 
         if self.activated:
             try:
@@ -475,12 +482,16 @@ class Manager(object):
                 worker.setDaemon(True)
                 workers.append(worker)
 
-            for worker in workers:  # стартуем пчелок
-                worker.start()
-            # todo: добавить обработку очередей в цикл While
-            self.logger.info('Обработка очереди загрузки/удаление пакетов:')
-            main_queue.join()  # ожидаем окончания обработки очереди
-            stopper.set()
+            try:
+                for worker in workers:  # стартуем пчелок
+                    worker.start()
+                # todo: добавить обработку очередей в цикл While
+                self.logger.info('Обработка очереди загрузки/удаление пакетов:')
+                main_queue.join()  # ожидаем окончания обработки очереди
+                stopper.set()
+            except Exception:
+                raise DownloadPacketError('Ошибка при загрузке пакетов из репозитория. Пакеты не будут установлены '
+                                          'или обновлены')
 
             while True:
                 try:
@@ -739,8 +750,19 @@ class Worker(threading.Thread):
                     else:
                         if new_pack:
                             self.logger.info('\tзагружается "{}"'.format(task.packetname))
-                        fp = self.dispatcher.get_file(task.src)
-                        hash_sum = file_hash_calc(fp)
+                        try:
+                            fp = self.dispatcher.get_file(task.src)
+                        except Exception as err:
+                            self.exceptions.put('Ошибка загрузки файла {} пакета {}: {}'.format(
+                                os.path.basename(task.src),
+                                task.packetname,
+                                err
+                                ))
+                            self.exceptions.put('Требуется ре-индексация репозитория')
+                            self.queue.task_done()
+                            break
+                        else:
+                            hash_sum = file_hash_calc(fp)
 
                         if not hash_sum == task.crc:
                             self.files_faulted[task.src] += 1

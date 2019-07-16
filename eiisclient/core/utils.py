@@ -76,10 +76,11 @@ def get_config_data(workdir, encode=DEFAULT_ENCODING):
     return config
 
 
-def chwmod(fpath):
+def chwmod(fpath, sleep=TIMETOSLEEP):
+    """Установка прав записи на файл владельцу"""
     if not os.access(fpath, os.W_OK):
         os.chmod(fpath, stat.S_IWUSR)
-        time.sleep(TIMETOSLEEP)
+        time.sleep(sleep)
 
 
 class ConfigDict(dict):

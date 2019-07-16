@@ -4,13 +4,12 @@ import logging
 import os
 import re
 import shutil
-import stat
 import time
 import weakref
 from datetime import datetime
 
 from eiisclient import DEFAULT_ENCODING
-from eiisclient.core.utils import from_json, get_temp_dir, gzip_read
+from eiisclient.core.utils import chwmod, from_json, get_temp_dir, gzip_read
 
 BUSYMESSAGE = '__REGLAMENT__'
 
@@ -37,10 +36,8 @@ class BaseDispatcher(object):
             except PermissionError as err:
                 self.logger.debug(err)
                 try:
-                    if not os.access(fp, os.W_OK):
-                        os.chmod(fp, stat.S_IWUSR)
-                        time.sleep(0.3)
-                        os.unlink(fp)
+                    chwmod(fp)
+                    os.unlink(fp)
                 except PermissionError as err:
                     self.logger.debug(err)
                     self.logger.error('** ошибка доступа - не удалось удалить файл {}'.format(fp))
@@ -65,10 +62,7 @@ class BaseDispatcher(object):
             shutil.copyfile(src, dst)
         except PermissionError:
             try:
-                import stat
-                if not os.access(dst, os.W_OK):
-                    os.chmod(dst, stat.S_IWUSR)
-                    time.sleep(0.3)
+                chwmod(dst, sleep=0.3)
                 os.unlink(dst)
                 time.sleep(0.3)
                 shutil.copyfile(src, dst)
@@ -83,11 +77,15 @@ class BaseDispatcher(object):
             os.unlink(fpath)
         except FileNotFoundError:
             pass
-        except Exception as err:
-            self.logger.error('** ошибка удаления файла "{}"'.format(fpath))
-            self.logger.debug(err)
-            if onerror:
-                raise
+        except Exception:
+            chwmod(fpath)
+            try:
+                os.unlink(fpath)
+            except Exception as err:
+                self.logger.error('** ошибка удаления файла "{}"'.format(fpath))
+                self.logger.debug(err)
+                if onerror:
+                    raise
 
     def walk_dir(self, dirpath):
         """ Генератор списка файлов в указанной папке
@@ -180,8 +178,8 @@ class FileDispatcher(BaseDispatcher):
 
     @property
     def index_create_date(self) -> datetime:
-        timestamp = os.path.getctime(os.path.join(self.repopath, self.index_file_name))
-        return datetime.fromtimestamp(timestamp)
+        timestamp = os.path.getmtime(os.path.join(self.repopath, self.index_file_name))
+        return datetime.utcfromtimestamp(timestamp)
 
 
 class SMBDispatcher(FileDispatcher):
