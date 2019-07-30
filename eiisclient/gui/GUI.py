@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import os
+import pathlib
 import sys
 import threading
 
@@ -160,6 +161,16 @@ class MainFrame(main.fmMain):
 
     def on_links_update(self, event):
         self.manager.update_links()
+
+    def on_help(self, event):
+        import webbrowser
+        try:
+            docs_path = pathlib.Path(sys._MEIPASS).joinpath('docs')
+            url = docs_path.joinpath('index.html').as_uri()
+            webbrowser.open(url, new=1, autoraise=True)
+            self.logger.info('Запущен интернет-броузер с документацией')
+        except Exception as err:
+            self.logger.error(err)
 
     # logic functions
     def run(self):

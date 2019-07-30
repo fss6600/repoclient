@@ -4,9 +4,10 @@ block_cipher = None
 
 
 a = Analysis(['eiisclient\\cli.py'],
-             pathex=['C:\\Users\\pmike\\workspace\\python\\eiisclient\\eiisclient'],
+             pathex=['C:\\Users\\pmike\\workspace\\python\\eiisclient',
+                     'C:\\Users\\pmike\\workspace\\python\\eiisclient\\eiisclient'],
              binaries=[],
-             datas=[],
+             datas=[(r'docs\build\html', 'docs'),],
              hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],

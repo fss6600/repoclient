@@ -8,7 +8,6 @@
 ###########################################################################
 
 import wx
-import wx.adv
 import wx.html
 import wx.xrc
 
@@ -124,11 +123,6 @@ class fmMain ( wx.Frame ):
         bSizer12.Add( self.btUpdate, 0, wx.ALL, 5 )
 
         bSizer12.Add((0, 0), 1, wx.EXPAND, 5)
-
-        self.m_hyperlink2 = wx.adv.HyperlinkCtrl(self.m_panel6, wx.ID_ANY, u"Руководство",
-                                                 u"http://www.fss6602.lan/wiki/obnovlenie-podsistem-eiis-socstrah-klient/",
-                                                 wx.DefaultPosition, wx.DefaultSize, wx.adv.HL_DEFAULT_STYLE)
-        bSizer12.Add(self.m_hyperlink2, 0, wx.ALL, 5)
         
         
         bSizer11.Add( bSizer12, 0, wx.EXPAND, 5 )

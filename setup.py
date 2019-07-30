@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """The setup script."""
+import os
+import sys
+from pathlib import Path
 
 from setuptools import find_packages, setup
 
@@ -13,6 +16,34 @@ setup_requirements = [ ]
 
 test_requirements = [ ]
 
+
+# сборка программы и документации
+
+def build_exe():
+    pyi = r'C:\Python34\Scripts\pyinstaller.exe'
+    spec = Path(__file__).parent / 'eiisclient.spec'
+    os.system('{} --clean {}'.format(pyi, spec))
+
+
+def build_doc():
+    make_path = Path(__file__).parent / 'docs' / 'make.bat'
+    os.system('{} html'.format(make_path))
+
+
+cmd = sys.argv[-1]
+
+if cmd == 'exe':
+    build_exe()
+    sys.exit()
+elif cmd == 'doc':
+    build_doc()
+    sys.exit()
+elif cmd == 'all':
+    build_doc()
+    build_exe()
+    sys.exit()
+
+
 setup(
     author="Michael Petroff",
     author_email='adm_fil_02@ro66.fss.ru',
@@ -23,9 +54,7 @@ setup(
         'Natural Language :: English',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
-    ],
+        ],
     description="Обновление подсистем ЕИИС Соцстрах",
     install_requires=requirements,
     license="BSD license",
@@ -40,4 +69,4 @@ setup(
     # url='https://github.com//eiisclient',
     version=get_version(),
     zip_safe=False,
-)
+        )

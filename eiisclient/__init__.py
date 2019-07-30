@@ -22,5 +22,3 @@ DEFAULT_INSTALL_PATH = os.path.normpath(os.path.join(os.path.expandvars('%PROGRA
 PROFILE_INSTALL_PATH = os.path.normpath(os.path.join(os.path.expandvars('%APPDATA%'), 'ЕИИС ФСС РФ'))
 
 
-def get_version():
-    return __version__
