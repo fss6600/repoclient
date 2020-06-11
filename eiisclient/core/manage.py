@@ -15,13 +15,7 @@ from enum import Enum
 from queue import Empty, Queue
 
 import pythoncom
-
-try:
-    import winshell, win32con
-except ImportError:
-    NOLINKS = True
-else:
-    NOLINKS = False
+import winshell
 
 from eiisclient import (DEFAULT_INSTALL_PATH, PROFILE_INSTALL_PATH,
                         SELECTED_FILE_NAME, WORK_DIR)
@@ -83,8 +77,7 @@ class Manager(object):
         self.local_index_hash = None
         self.remote_index = None
         self.remote_index_hash = None
-        self.desktop = winshell.desktop() if not NOLINKS else \
-            os.path.normpath(os.path.join(os.path.expandvars('%USERPROFILE%'), 'Desktop'))
+        self.desktop = winshell.desktop()
         self.finalize = weakref.finalize(self, self._clean)
 
         if self.logger.level == logging.DEBUG:
@@ -544,9 +537,6 @@ class Manager(object):
 
         :param
         """
-        if NOLINKS:
-            raise LinkDisabled('- отсутствует библиотека win32')
-
         if not exe_file_path:
             raise LinkNoData(
                 '- недостаточно данных для создания ярлыка для {}. Проверьте реестр подсистем'.format(title))
