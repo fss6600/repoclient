@@ -362,8 +362,9 @@ class ConfigFrame(main.fmConfig):
         self.wxPurgePackets.SetValue(self.config.purge)
         # значение кодировки файлов временно заблокировано до перехода на UTF-8
         # self.wxEncode.SetValue(self.config.get('encode', 'UTF-8'))
-        self.wxEncode.SetValue('CP1251')
-        self.wxEncode.Enable(False)
+        self.wxEncode.SetValue(self.config.encode)
+        # self.wxEncode.SetValue('CP1251')
+        # self.wxEncode.Enable(False)
         self.wxFTPEncode.SetValue(self.config.ftpencode)
 
         self.sdApply.Label = 'Применить'
@@ -387,7 +388,7 @@ class ConfigFrame(main.fmConfig):
         self.config.install_to_profile = self.wxInstallToUserProfile.GetValue()
         self.config.threads = int(self.wxThreadsCount.Selection) + 1
         self.config.purge = self.wxPurgePackets.GetValue()
-        # self.config.encode = self.wxEncode.GetValue().upper()
+        self.config.encode = self.wxEncode.GetValue().upper()
         self.config.ftpencode = self.wxFTPEncode.GetValue().upper()
 
         #  write to file if changed

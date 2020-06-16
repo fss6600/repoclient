@@ -12,7 +12,7 @@ __version__ = get_version()
 __license__ = 'BSD'
 
 DEFAULT_FTP_SERVER = 'ftp://10.66.2.131'
-DEFAULT_ENCODING = 'CP1251'
+DEFAULT_ENCODING = 'UTF-8'
 DEFAULT_FTP_ENCODING = 'UTF-8'
 WORK_DIR_NAME = 'Обновление ЕИИС Соцстрах'
 CONFIG_FILE_NAME = 'config.json'

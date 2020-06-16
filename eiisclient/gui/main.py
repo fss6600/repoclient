@@ -96,8 +96,6 @@ class fmMain ( wx.Frame ):
         bSizer10 = wx.BoxSizer( wx.VERTICAL )
 
         self.wxInfoView = wx.html.HtmlWindow( self.m_panel5, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.html.HW_SCROLLBAR_AUTO )
-        self.wxInfoView.SetMinSize( wx.Size( -1,200 ) )
-
         bSizer10.Add( self.wxInfoView, 1, wx.ALL|wx.EXPAND, 5 )
 
 
@@ -209,7 +207,6 @@ class fmMain ( wx.Frame ):
         # Connect Events
         self.btRefresh.Bind( wx.EVT_BUTTON, self.on_refresh )
         self.wxPacketList.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_package_list )
-        self.wxInfoView.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_view_info )
         self.wxLogView.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_log_info )
         self.btUpdate.Bind( wx.EVT_BUTTON, self.on_update )
         self.Bind( wx.EVT_MENU, self.on_update, id = self.menuitemUpdate.GetId() )
@@ -233,9 +230,6 @@ class fmMain ( wx.Frame ):
         pass
 
     def on_enter_package_list( self, event ):
-        pass
-
-    def on_enter_view_info( self, event ):
         pass
 
     def on_enter_log_info( self, event ):
@@ -375,7 +369,7 @@ class fmConfig ( wx.Frame ):
 
         fgSizer1.Add( self.m_staticText8, 0, wx.ALL, 5 )
 
-        self.wxFTPEncode = wx.TextCtrl( self.m_panel15, wx.ID_ANY, u"UTF-8", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.wxFTPEncode = wx.TextCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
         self.wxFTPEncode.SetToolTip( u"Кодировка символов сервера репозитория.\n\nПри возникновении ошибки в разпознавании имен файлов на сервере программой, установить кодировку символов, используемую сервером" )
 
         fgSizer1.Add( self.wxFTPEncode, 0, wx.ALL|wx.EXPAND, 5 )
