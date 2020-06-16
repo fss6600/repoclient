@@ -23,7 +23,11 @@ exe = EXE(pyz,
           a.zipfiles,
           a.datas,
           name='eiisclient',
+	  #name='eiisclient-dbg',
+          #debug=True,
           debug=False,
           strip=False,
           upx=False,
-          console=False)
+          console=False,
+          #console=True,
+)

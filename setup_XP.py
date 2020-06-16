@@ -20,7 +20,8 @@ test_requirements = [ ]
 # сборка программы и документации
 
 def build_exe():
-    pyi = r'C:\Users\mb.petrov.66\workspace\python\eiisrepo\client\.venv\py38\Scripts\pyinstaller.exe'
+    pyi = r'C:\Users\mb.petrov.66\workspace\python\eiisrepo\client\.venv\py34\Scripts\pyinstaller.exe'
+    
     spec = Path(__file__).parent / 'eiisclient.spec'
     os.system('{} --clean {}'.format(pyi, spec))
 
@@ -53,8 +54,7 @@ setup(
         'License :: OSI Approved :: BSD License',
         'Natural Language :: English',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.4',
         ],
     description="Обновление подсистем ЕИИС Соцстрах",
     install_requires=requirements,
