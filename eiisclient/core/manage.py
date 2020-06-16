@@ -588,23 +588,15 @@ class Manager(object):
 
     def _get_link_data(self, packet) -> tuple:
         try:
-            title = self.remote_index[packet].get('alias') or packet
-            title = title.lstrip('"').rstrip('"')
+            alias = self.remote_index[packet].get('alias') or packet
+            alias = alias.lstrip('"').rstrip('"')
         except Exception:
-            title = packet
+            alias = packet
+        #todo: добавить поле `execf` в индекс-файл и обработку исполняемого файла
+        execf = self.remote_index[packet].get('execf') or REESTR.get(packet)
+        execf_path = os.path.join(self.eiispath, packet, execf) if execf else None
 
-        binaries = glob.glob(r'{}\*.exe'.format(os.path.join(self.eiispath, packet)))
-        count = len(binaries)
-        if count > 1:
-            # todo: добавить возможность добавлять свои данные в реестр подсистем
-            exefilename = REESTR.get(packet)
-            exe_file_path = os.path.join(self.eiispath, packet, exefilename) if exefilename else None
-        elif count == 1:
-            exe_file_path = binaries[0]
-        else:
-            exe_file_path = None
-
-        return title, exe_file_path
+        return alias, execf_path
 
     def _init_log(self):
         self.logger.debug('{}: repo: {}'.format(self, self.repopath))
