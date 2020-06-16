@@ -7,6 +7,7 @@ import shutil
 import time
 import weakref
 from datetime import datetime
+import locale
 
 from eiisclient import DEFAULT_ENCODING
 from eiisclient.core.utils import chwmod, from_json, get_temp_dir, gzip_read
@@ -24,6 +25,9 @@ class BaseDispatcher(object):
         self.logger = kwargs.get('logger')
         self.encode = kwargs.get('encode', DEFAULT_ENCODING)
         self.tempdir = get_temp_dir(prefix='disp_')
+        # ликвидация ошибки locale error ru-RU при формировании даты индекс-файла на ftp-сервере
+        locale.setlocale(locale.LC_ALL, '')
+
 
     @property
     def repopath(self):
@@ -295,7 +299,8 @@ class FTPDispatcher(BaseDispatcher):
     @property
     def index_create_date(self) -> datetime:
         mdate_as_string = self.ftp.sendcmd('MDTM %s' % self.index_file_path).split()[1]
-        return datetime.strptime(mdate_as_string, '%Y%m%d%H%M%S')
+        create_date = datetime.strptime(mdate_as_string, '%Y%m%d%H%M%S')
+        return create_date
 
 
 class Dispatcher(object):
