@@ -273,16 +273,16 @@ class Manager(object):
                     self.logger.error('- ошибка удаления пакета {}: {}'.format(package, err))
                 else:
                     self.logger.info('{} - удален'.format(package))
-                    continue
 
-            try:
-                new_pack_path = '{}.removed'.format(pack_path)
-                os.rename(pack_path, new_pack_path)
-            except Exception as err:
-                self.logger.debug('- ошибка удаления пакета {}: {}'.format(package, err))
-                raise PacketDeleteError
             else:
-                self.logger.info('{} - помечен как удаленный'.format(package))
+                try:
+                    new_pack_path = '{}.removed'.format(pack_path)
+                    os.rename(pack_path, new_pack_path)
+                except Exception as err:
+                    self.logger.debug('- ошибка удаления пакета {}: {}'.format(package, err))
+                    raise PacketDeleteError
+                else:
+                    self.logger.info('{} - помечен как удаленный'.format(package))
 
             # удаление ярлыка подсистемы
             try:
@@ -588,7 +588,8 @@ class Manager(object):
 
     def _get_link_data(self, packet) -> tuple:
         try:
-            title = self.remote_index[packet].get('title') or self.remote_index[packet].get('title') or packet
+            title = self.remote_index[packet].get('alias') or packet
+            title = title.lstrip('"').rstrip('"')
         except Exception:
             title = packet
 
