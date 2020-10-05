@@ -32,7 +32,7 @@ class MainFrame(main.fmMain):
         self.manager = None
 
         # инициализация параметров
-        self.config.repopath = DEFAULT_FTP_SERVER  # настройка для филиалал №2 - will remove
+        self.config.repopath = DEFAULT_FTP_SERVER  #todo настройка для филиалал №2 - перенести в настройку во время установки программы
         self.config.threads = 1
         self.config.purge = False
         self.config.encode = DEFAULT_ENCODING
@@ -71,8 +71,8 @@ class MainFrame(main.fmMain):
         try:
             self.update_packet_list()
             self.update_info_view()
-        except UnicodeDecodeError:
-            self.logger.error('Указана неверная кодировка сервера: {}'.format(self.config.ftpencode))
+        except UnicodeDecodeError as err:
+            self.logger.error('Ошибка кодировка: {}'.format(err))
         except DispatcherActivationError as err:
             self.logger.error('Ошибка активации диспетчера: {}'.format(err))
         except Exception as err:
@@ -103,7 +103,6 @@ class MainFrame(main.fmMain):
         ConfigFrame(self, self).Show()
 
     def on_exit(self, event):
-        ''''''
         self.Close(True)
 
     def on_update(self, event):
@@ -128,7 +127,6 @@ class MainFrame(main.fmMain):
         if ans == wx.ID_YES:
             self.logger.debug('Очистка от пакетов, помеченных как удаленные')
             try:
-
                 self.manager.clean_removed()
             except PacketDeleteError as err:
                 self.logger.error('Ошибка при очистке удаленных пакетов: {}'.format(err))
@@ -168,7 +166,7 @@ class MainFrame(main.fmMain):
             docs_path = pathlib.Path(sys._MEIPASS).joinpath('docs')
             url = docs_path.joinpath('index.html').as_uri()
             webbrowser.open(url, new=1, autoraise=True)
-            self.logger.info('Запущен интернет-броузер с документацией')
+            self.logger.info('Запущен интернет-браузер с документацией')
         except Exception as err:
             self.logger.error(err)
 
@@ -218,7 +216,7 @@ class MainFrame(main.fmMain):
         if level == 'DEBUG':
             color = wx.BLUE
         elif level == 'WARNING':
-            color = wx.RED
+            color = wx.GREEN
         elif level == 'ERROR':
             color = wx.RED
         else:
@@ -340,7 +338,6 @@ class WxLogHandler(logging.StreamHandler):
 
 class ConfigFrame(main.fmConfig):
     """"""
-
     def __init__(self, mframe: MainFrame, *args, **kwargs):
         super(ConfigFrame, self).__init__(*args, **kwargs)
         self.config = mframe.config

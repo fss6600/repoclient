@@ -478,7 +478,6 @@ class Manager(object):
             try:
                 for worker in workers:  # стартуем пчелок
                     worker.start()
-                # todo: добавить обработку очередей в цикл While
                 self.logger.info('Обработка очереди загрузки/удаление пакетов:')
                 main_queue.join()  # ожидаем окончания обработки очереди
                 stopper.set()
@@ -592,7 +591,6 @@ class Manager(object):
             alias = alias.lstrip('"').rstrip('"')
         except Exception:
             alias = packet
-        #todo: добавить поле `execf` в индекс-файл и обработку исполняемого файла
         execf = self.remote_index[packet].get('execf') or REESTR.get(packet)
         execf_path = os.path.join(self.eiispath, packet, execf) if execf else None
 
@@ -674,7 +672,7 @@ class Manager(object):
                     self.logger.debug('[3] copy: {}  ->  {}'.format(s, d))
                     shutil.copyfile(s, d)
                 except Exception as err:
-                    self.logger.debug('Error: {}'.format(err))
+                    self.logger.debug('Copy pack Error: {}'.format(err))
                     raise
 
     def move_package(self, src, dst):

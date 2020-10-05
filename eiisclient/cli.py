@@ -145,7 +145,6 @@ def main():  # pragma: no cover
                     fp.write('# Добавьте наименования пакетов для установки подсистемы по одному на строку\n\n'.encode(encode))
             return ('Инициализация прошла успешно')
 
-
         eiis_path = PROFILE_INSTALL_PATH if install_to_profile else DEFAULT_INSTALL_PATH
         manager = Manager(repopath, logger=logger, eiispath=eiis_path, encode=encode,
                           ftpencode=ftpencode, threads=threads, purge=purge)
