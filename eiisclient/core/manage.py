@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 
-import glob
 import logging
 import os
 import shutil
@@ -17,10 +16,8 @@ from queue import Empty, Queue
 import pythoncom
 import winshell
 
-from eiisclient import (DEFAULT_INSTALL_PATH, PROFILE_INSTALL_PATH,
-                        SELECTED_FILE_NAME, WORK_DIR)
+from eiisclient import (DEFAULT_INSTALL_PATH, PROFILE_INSTALL_PATH, WORK_DIR)
 from eiisclient.core.dispatch import BaseDispatcher, get_dispatcher
-from eiisclient.core.eiisreestr import REESTR
 from eiisclient.core.exceptions import (DispatcherActivationError, DispatcherNotActivated,
                                         DownloadPacketError, LinkUpdateError, PacketDeleteError, RepoIsBusy,
                                         PacketInstallError, LinkDisabled, LinkNoData)
@@ -39,38 +36,34 @@ def get_stdout_logger() -> logging.Logger:
 
 
 class Action(Enum):
-    ''''''
+    """
+    Тип действия над пакетом
+    """
     install, update, delete = range(3)
 
 
 class Status(Enum):
+    """
+    Статус пакета на ПК пользователя
+    """
     installed, removed, purged = range(3)
 
 
 class Manager(object):
-    """"""
+    """
+    Основной обработчик пакетов на клиенте.
+    """
 
     def __init__(self, config, **kwargs):
-        self.install_to_profile = False
-        self.repopath = None
-        self.encode = None
-        self.ftpencode = None
-        self.threads = None
-        self.purge = False
-
-        #  чтение и присвоение параметров
-        for k, v in config.items():
-            setattr(self, k, v)
+        self.config = config
         self.logger = kwargs.get('logger', get_stdout_logger())
         self.full = kwargs.get('full', False)
-
-        self.eiispath = PROFILE_INSTALL_PATH if self.install_to_profile else DEFAULT_INSTALL_PATH
+        self.eiispath = PROFILE_INSTALL_PATH if self.config.install_to_profile else DEFAULT_INSTALL_PATH
         self.tempdir = get_temp_dir(prefix='eiis_man_tmp_')
         self.buffer = os.path.join(WORK_DIR, 'buffer')
         self.task_queue_k = kwargs.get('kqueue', 2)  # коэффициент размера основной очереди загрузки
         self.local_index_file = os.path.join(WORK_DIR, 'index.json')
         self.local_index_file_hash = os.path.join('{}.sha1'.format(self.local_index_file))
-        self.selected_packets_list_file = os.path.join(WORK_DIR, SELECTED_FILE_NAME)
         self.action_list = {}
         self.disp = None
         self.local_index = None
@@ -86,14 +79,15 @@ class Manager(object):
     def __repr__(self):
         return '<Manager: {}>'.format(id(self))
 
-    def start(self, installed: Iterable, selected: Iterable):
+    def start(self, selected: Iterable):
         """"""
         #  определение action_list на установку, обновление и удаление
-        install, update, delete = self.get_lists_difference(installed, selected)
+        install, update, delete = self.get_lists_difference(
+            self.get_installed_packages(), selected=selected
+        )
 
         try:
             self.activate()
-
             self.action_list['install'] = self.parse_data_by_action_gen(install, Action.install)
             self.action_list['update'] = self.parse_data_by_action_gen(update, Action.update)
             self.action_list['delete'] = self.parse_data_by_action_gen(delete, Action.delete)
@@ -121,6 +115,10 @@ class Manager(object):
 
             # обновление ярлыков на рабочем столе
             self.update_links()
+        except Exception as err:
+
+            self.logger.exception(err)
+            self.logger.error('Ошибка при удалении пакета')
 
         finally:
             self.deactivate()
@@ -160,10 +158,10 @@ class Manager(object):
     def activate(self):
         ''''''
         try:
-            self.disp = get_dispatcher(self.repopath, logger=self.logger, encode=self.encode,
-                                       ftpencode=self.ftpencode, tempdir=self.tempdir)
+            self.disp = get_dispatcher(self.config.repopath, logger=self.logger, encode=self.config.encode,
+                                       ftpencode=self.config.ftpencode, tempdir=self.tempdir)
         except ConnectionError as err:
-            self.logger.error('Ошибка активации диспетчера для репозитория {}'.format(self.repopath))
+            self.logger.error('Ошибка активации диспетчера для репозитория {}'.format(self.config.repopath))
             self.logger.error('Сервер недоступен или введен неправильный путь к репозиторию')
             raise DispatcherActivationError from err
 
@@ -183,36 +181,37 @@ class Manager(object):
     def deactivate(self):
         if self.disp:
             self.disp.close()
-        self.disp = None
+            self.disp = None
         self.action_list = {}
         self.local_index = None
         self.local_index_hash = None
         self.remote_index = None
         self.remote_index_hash = None
 
-    def get_info(self) -> dict:
-        NO_DATA = 'Нет данных'
-        packets_in_repo = NO_DATA
-        local_index_last_change = NO_DATA
-        remote_index_last_change = NO_DATA
-        repo_updated = NO_DATA
-        try:
-            self.activate()
+    def get_info(self, get_remote=False) -> dict:
+        packets_in_repo = None
+        local_index_last_change = None
+        remote_index_last_change = None
+        repo_updated = None
 
-            if os.path.exists(self.local_index_file):
-                local_index_last_change = os.path.getmtime(self.local_index_file)
-                local_index_last_change = datetime.fromtimestamp(local_index_last_change).strftime('%d-%m-%Y %H:%M:%S')
+        if get_remote:
+            try:
+                self.activate()
 
-            remote_index_last_change = self.disp.index_create_date.strftime('%d-%m-%Y %H:%M:%S')
+                if os.path.exists(self.local_index_file):
+                    local_index_last_change = os.path.getmtime(self.local_index_file)
+                    local_index_last_change = datetime.fromtimestamp(local_index_last_change).strftime('%d-%m-%Y %H:%M:%S')
 
-            packets_in_repo = len(self.remote_index.keys())
-            repo_updated = 'имеются обновления' if self.repo_updated() else 'нет обновлений'
+                remote_index_last_change = self.disp.index_create_date.strftime('%d-%m-%Y %H:%M:%S')
 
-        except DispatcherActivationError:
-            pass
+                packets_in_repo = len(self.remote_index.get('packages', {}).keys())
+                repo_updated = 'имеются обновления' if self.repo_updated() else 'нет обновлений'
 
-        finally:
-            self.deactivate()
+            except DispatcherActivationError:
+                pass
+
+            finally:
+                self.deactivate()
 
         info = OrderedDict()
         info.setdefault('Дата последнего запуска программы', local_index_last_change)
@@ -222,7 +221,7 @@ class Manager(object):
         info.setdefault('Установлено подсистем', len(self.get_installed_packages()))
         info.setdefault('Пакетов в буфере', self.buffer_count())
         info.setdefault('Путь - подсистемы', self.eiispath)
-        info.setdefault('Путь - репозиторий', self.repopath)
+        info.setdefault('Путь - репозиторий', self.config.repopath)
 
         return info
 
@@ -237,14 +236,6 @@ class Manager(object):
             active_list = (d for d in os.listdir(self.eiispath) if os.path.isdir(os.path.join(self.eiispath, d)))
             return tuple(sorted((name for name in active_list if not name.endswith('.removed'))))
         else:
-            return tuple()
-
-    def get_selected_packages(self) -> tuple:
-        try:
-            with open(self.selected_packets_list_file) as fp:
-                return tuple(
-                    line.strip() for line in fp.readlines() if not any([line.startswith('#'), line.rstrip() == '']))
-        except FileNotFoundError:
             return tuple()
 
     def get_removed_packages(self) -> tuple:
@@ -266,7 +257,7 @@ class Manager(object):
     def delete_packages(self):
         for package in self.action_list['delete']:
             pack_path = os.path.join(self.eiispath, package)
-            if self.purge:
+            if self.config.purge:
                 try:
                     self._remove_dir(pack_path)
                 except Exception as err:
@@ -328,6 +319,9 @@ class Manager(object):
         except Exception:
             return {}
 
+    def get_local_index_packages(self) -> dict:
+        return self.get_local_index().get('packages', {})
+
     def get_local_index_hash(self) -> str:
         try:
             with open(self.local_index_file_hash) as fp:
@@ -362,13 +356,16 @@ class Manager(object):
         return res
 
     def parse_data_by_action_gen(self, seq, action):
-        ''''''
+        """"""
+        r_packages = self.remote_index.get('packages', {})  # get remote packages map
+        l_packages = self.local_index.get('packages', {})  # get local packages map
+
         if action == Action.install:
             self.logger.info('Обработка данных на установку пакетов:')
             for package in seq:
                 self.logger.info('\t"{}"'.format(package))
                 self.claim_packet(package)
-                files = self.remote_index[package]['files']
+                files = r_packages[package]['files']
 
                 for file in files:
                     hash = files[file]
@@ -383,13 +380,13 @@ class Manager(object):
         elif action == Action.update:
             self.logger.info('Обработка данных на обновление пакетов:')
             for package in seq:
-                if self.local_index.get(package, None) is None:  # первый запуск
-                    self.local_index[package] = {'hash': '', 'files': {}, 'phash': ''}
+                if l_packages.get(package, None) is None:  # первый запуск
+                    l_packages[package] = {'hash': '', 'files': {}, 'phash': ''}
 
-                if self.full or not self.local_index[package]['phash'] == self.remote_index[package]['phash']:
+                if self.full or not l_packages[package]['phash'] == r_packages[package]['phash']:
                     self.logger.info('\t"{}"'.format(package))
-                    local_files = self.local_index[package]['files']
-                    remote_files = self.remote_index[package]['files']
+                    local_files = l_packages[package]['files']
+                    remote_files = r_packages[package]['files']
 
                     install, update, delete = self.get_lists_difference(local_files.keys(), remote_files.keys())
 
@@ -434,7 +431,7 @@ class Manager(object):
                 #     self.logger.info('- {}'.format(packname))
                 # done[packname] += 1
 
-                task = namedtuple('Task', ('packetname', 'action', 'src', 'dst', 'crc'))
+                task = namedtuple('Task', ('packetname', 'action', 'src', 'dst', 'crc'))  # todo вынести перед циклом
 
                 task.packetname = packname
                 task.action = action
@@ -452,7 +449,7 @@ class Manager(object):
         '''Получить новые файлы из репозитория или удалить локально старые'''
 
         main_queue = Queue()  # todo: пересмотреть работу с асинхронной очередью, ввиду блокировки из-за ожидания
-        # main_queue = Queue(maxsize=self.threads * self.task_queue_k)
+        # main_queue = Queue(maxsize=self.config.threads * self.task_queue_k)
 
         for task in self.get_task():  # загрузка очереди
             main_queue.put(task)
@@ -467,8 +464,10 @@ class Manager(object):
             error = False
             workers = []
 
-            for i in range(self.threads):
-                dispatcher = get_dispatcher(self.repopath, encode=self.encode, ftpencode=self.ftpencode,
+            for i in range(self.config.threads):
+                dispatcher = get_dispatcher(self.config.repopath,
+                                            encode=self.config.encode,
+                                            ftpencode=self.config.ftpencode,
                                             logger=self.logger)
                 worker = Worker(main_queue, exc_queue, stopper, dispatcher, logger=self.logger)
                 worker.setName('{}'.format(worker))
@@ -558,7 +557,6 @@ class Manager(object):
 
     def remove_shortcut(self, packet):
         title, _ = self._get_link_data(packet)
-
         link_path = os.path.join(self.desktop, title + '.lnk')
         try:
             os.unlink(link_path)
@@ -587,23 +585,26 @@ class Manager(object):
 
     def _get_link_data(self, packet) -> tuple:
         try:
-            alias = self.remote_index[packet].get('alias') or packet
+            alias = self.remote_index.get('packages', {})[packet].get('alias') or packet
             alias = alias.lstrip('"').rstrip('"')
-        except Exception:
+        except:
             alias = packet
-        execf = self.remote_index[packet].get('execf') or REESTR.get(packet)
-        execf_path = os.path.join(self.eiispath, packet, execf) if execf else None
+        try:
+            execf = self.remote_index.get('packages', {})[packet].get('execf')
+            execf_path = os.path.join(self.eiispath, packet, execf) if execf else None
+        except:
+            execf_path = None
 
         return alias, execf_path
 
     def _init_log(self):
-        self.logger.debug('{}: repo: {}'.format(self, self.repopath))
+        self.logger.debug('{}: repo: {}'.format(self, self.config.repopath))
         self.logger.debug('{}: eiis: {}'.format(self, self.eiispath))
         self.logger.debug('{}: buffer: {}'.format(self, self.buffer))
-        self.logger.debug('{}: encode: {}'.format(self, self.encode))
+        self.logger.debug('{}: encode: {}'.format(self, self.config.encode))
         self.logger.debug('{}: tempdir: {}'.format(self, self.tempdir.name))
         self.logger.debug('{}: task_k: {}'.format(self, self.task_queue_k))
-        self.logger.debug('{}: purge: {}'.format(self, self.purge))
+        self.logger.debug('{}: purge: {}'.format(self, self.config.purge))
 
     def _remove_dir(self, fpath):
         """Удаление директории с файлами"""
@@ -738,7 +739,7 @@ class Worker(threading.Thread):
                                 os.path.basename(task.src),
                                 task.packetname,
                                 err
-                                ))
+                            ))
                             self.exceptions.put('Требуется ре-индексация репозитория')
                             self.queue.task_done()
                             break

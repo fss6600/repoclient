@@ -3,7 +3,7 @@
 block_cipher = None
 
 
-a = Analysis(['eiisclient\\cli.py'],
+a = Analysis(['eiisclient\\main.py'],
              pathex=['C:\\Users\\mb.petrov.66\\workspace\\python\\eiisrepo\\client'],
              binaries=[],
              datas=[(r'docs\build\html', 'docs'),],

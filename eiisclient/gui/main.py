@@ -1,423 +1,438 @@
 # -*- coding: utf-8 -*-
-
-###########################################################################
-## Python code generated with wxFormBuilder (version Oct 26 2018)
-## http://www.wxformbuilder.org/
-##
-## PLEASE DO *NOT* EDIT THIS FILE!
-###########################################################################
+import os
+import pathlib
+import sys
+import threading
 
 import wx
-import wx.xrc
-import wx.html
-
-###########################################################################
-## Class fmMain
-###########################################################################
-
-class fmMain ( wx.Frame ):
-
-    def __init__( self, parent ):
-        wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = u"Обновление ЕИИС Соцстрах", pos = wx.DefaultPosition, size = wx.Size( 1000,700 ), style = wx.DEFAULT_FRAME_STYLE|wx.TAB_TRAVERSAL )
-
-        self.SetSizeHints( wx.Size( 400,200 ), wx.DefaultSize )
-
-        bSizer21 = wx.BoxSizer( wx.VERTICAL )
-
-        self.pToolbar = wx.Panel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        bsToolbar = wx.BoxSizer( wx.HORIZONTAL )
-
-
-        self.pToolbar.SetSizer( bsToolbar )
-        self.pToolbar.Layout()
-        bsToolbar.Fit( self.pToolbar )
-        bSizer21.Add( self.pToolbar, 0, wx.EXPAND, 5 )
-
-        self.sMain = wx.SplitterWindow( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.SP_3D|wx.SP_3DBORDER|wx.SP_LIVE_UPDATE )
-        self.sMain.SetSashGravity( 0 )
-        self.sMain.Bind( wx.EVT_IDLE, self.sMainOnIdle )
-        self.sMain.SetMinimumPaneSize( 100 )
-
-        self.pLeft = wx.Panel( self.sMain, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        self.pLeft.SetMinSize( wx.Size( 300,-1 ) )
-
-        bSizer26 = wx.BoxSizer( wx.VERTICAL )
-
-        bSizer26.SetMinSize( wx.Size( 200,200 ) )
-        bSizer111 = wx.BoxSizer( wx.HORIZONTAL )
-
-        self.m_staticText1 = wx.StaticText( self.pLeft, wx.ID_ANY, u"Пакеты подсистем:", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.m_staticText1.Wrap( -1 )
-
-        self.m_staticText1.SetToolTip( u"Для установки/удаления поставьте/снимите галку" )
-
-        bSizer111.Add( self.m_staticText1, 0, wx.ALL, 5 )
-
-
-        bSizer111.Add( ( 0, 0), 1, wx.EXPAND, 5 )
-
-        self.btRefresh = wx.BitmapButton( self.pLeft, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
-
-        self.btRefresh.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_UNDO, wx.ART_BUTTON ) )
-        self.btRefresh.SetToolTip( u"Обновить список пакетов" )
-
-        bSizer111.Add( self.btRefresh, 0, wx.ALL, 5 )
-
-
-        bSizer26.Add( bSizer111, 0, wx.EXPAND, 5 )
-
-        wxPacketListChoices = [u"Choice 1", u"Choice 2", u"Choice 3", u"Choice 4", u"Choice 5"]
-        self.wxPacketList = wx.CheckListBox( self.pLeft, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wxPacketListChoices, 0 )
-        self.wxPacketList.SetFont( wx.Font( wx.NORMAL_FONT.GetPointSize(), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
-        self.wxPacketList.SetToolTip( u"Установить галки для установки пакетов.\nСнять галки для удаления пакетов." )
-        self.wxPacketList.SetMinSize( wx.Size( 200,-1 ) )
-
-        bSizer26.Add( self.wxPacketList, 1, wx.ALL|wx.EXPAND, 5 )
-
-        bSizer28 = wx.BoxSizer( wx.HORIZONTAL )
-
-
-        bSizer26.Add( bSizer28, 0, wx.EXPAND, 5 )
-
-
-        self.pLeft.SetSizer( bSizer26 )
-        self.pLeft.Layout()
-        bSizer26.Fit( self.pLeft )
-        self.pRight = wx.Panel( self.sMain, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        self.pRight.SetMinSize( wx.Size( 200,-1 ) )
-
-        bSizer27 = wx.BoxSizer( wx.VERTICAL )
-
-        self.m_splitter2 = wx.SplitterWindow( self.pRight, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.SP_3D )
-        self.m_splitter2.Bind( wx.EVT_IDLE, self.m_splitter2OnIdle )
-        self.m_splitter2.SetMinimumPaneSize( 100 )
-
-        self.m_panel5 = wx.Panel( self.m_splitter2, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        bSizer10 = wx.BoxSizer( wx.VERTICAL )
-
-        self.wxInfoView = wx.html.HtmlWindow( self.m_panel5, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.html.HW_SCROLLBAR_AUTO )
-        bSizer10.Add( self.wxInfoView, 1, wx.ALL|wx.EXPAND, 5 )
-
-
-        self.m_panel5.SetSizer( bSizer10 )
-        self.m_panel5.Layout()
-        bSizer10.Fit( self.m_panel5 )
-        self.m_panel6 = wx.Panel( self.m_splitter2, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        bSizer11 = wx.BoxSizer( wx.VERTICAL )
-
-        self.wxLogView = wx.TextCtrl( self.m_panel6, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, wx.HSCROLL|wx.TE_MULTILINE|wx.TE_NOHIDESEL|wx.TE_READONLY|wx.TE_RICH )
-        bSizer11.Add( self.wxLogView, 1, wx.ALL|wx.EXPAND, 5 )
-
-        bSizer12 = wx.BoxSizer( wx.HORIZONTAL )
-
-        self.btUpdate = wx.Button( self.m_panel6, wx.ID_ANY, u"Обновить", wx.DefaultPosition, wx.DefaultSize, 0 )
-
-        self.btUpdate.SetDefault()
-        self.btUpdate.SetToolTip( u"Запустить процесс установки/обновления пакетов." )
-        self.btUpdate.SetHelpText( u"Запустить процесс обновления/установки" )
-
-        bSizer12.Add( self.btUpdate, 0, wx.ALL, 5 )
-
-
-        bSizer12.Add( ( 0, 0), 1, wx.EXPAND, 5 )
-
-
-        bSizer11.Add( bSizer12, 0, wx.EXPAND, 5 )
-
-
-        self.m_panel6.SetSizer( bSizer11 )
-        self.m_panel6.Layout()
-        bSizer11.Fit( self.m_panel6 )
-        self.m_splitter2.SplitHorizontally( self.m_panel5, self.m_panel6, 0 )
-        bSizer27.Add( self.m_splitter2, 1, wx.EXPAND, 5 )
-
-
-        self.pRight.SetSizer( bSizer27 )
-        self.pRight.Layout()
-        bSizer27.Fit( self.pRight )
-        self.sMain.SplitVertically( self.pLeft, self.pRight, 291 )
-        bSizer21.Add( self.sMain, 1, wx.EXPAND, 5 )
-
-
-        self.SetSizer( bSizer21 )
-        self.Layout()
-        self.wxStatusBar = self.CreateStatusBar( 1, wx.STB_SIZEGRIP, wx.ID_ANY )
-        self.wxMenuBar = wx.MenuBar( 0 )
-        self.menuFile = wx.Menu()
-        self.menuitemUpdate = wx.MenuItem( self.menuFile, wx.ID_ANY, u"Обновить список пакетов"+ u"\t" + u"F5", u"Обновить список пакетов подсистем", wx.ITEM_NORMAL )
-        self.menuFile.Append( self.menuitemUpdate )
-
-        self.menuFile.AppendSeparator()
-
-        self.m_menu2 = wx.Menu()
-        self.menuitem_select_all = wx.MenuItem( self.m_menu2, wx.ID_ANY, u"Выбрать все пакеты", wx.EmptyString, wx.ITEM_NORMAL )
-        self.m_menu2.Append( self.menuitem_select_all )
-
-        self.menuitem_unselect_all = wx.MenuItem( self.m_menu2, wx.ID_ANY, u"Снять все выделения", wx.EmptyString, wx.ITEM_NORMAL )
-        self.m_menu2.Append( self.menuitem_unselect_all )
-
-        self.menuFile.AppendSubMenu( self.m_menu2, u"Выбор пакетов" )
-
-        self.menuFile.AppendSeparator()
-
-        self.menuitemExit = wx.MenuItem( self.menuFile, wx.ID_EXIT, u"Завершить"+ u"\t" + u"Ctrl+q", u"Завершить работу программы", wx.ITEM_NORMAL )
-        self.menuFile.Append( self.menuitemExit )
-
-        self.wxMenuBar.Append( self.menuFile, u"Файл" )
-
-        self.menuService = wx.Menu()
-        self.menuConfig = wx.MenuItem( self.menuService, wx.ID_ANY, u"Настройки", u"Настройки программы", wx.ITEM_NORMAL )
-        self.menuService.Append( self.menuConfig )
-
-        self.m_menu1 = wx.Menu()
-        self.menuitemPurge = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Удалить подсистемы, помеченные как \"удаленные\"", u"Удаление неиспользуемых подсистем с компьютера", wx.ITEM_NORMAL )
-        self.m_menu1.Append( self.menuitemPurge )
-
-        self.menuitemCleanBuffer = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Очистить буфер", u"Очистить буфер", wx.ITEM_NORMAL )
-        self.m_menu1.Append( self.menuitemCleanBuffer )
-
-        self.menuService.AppendSubMenu( self.m_menu1, u"Очистка" )
-
-        self.menuService.AppendSeparator()
-
-        self.menuitemLinksUpdate = wx.MenuItem( self.menuService, wx.ID_ANY, u"Обновить ярлыки", u"Обновить ярлыки подсистем на рабочем столе", wx.ITEM_NORMAL )
-        self.menuService.Append( self.menuitemLinksUpdate )
-
-        self.btFull = wx.MenuItem( self.menuService, wx.ID_ANY, u"Полная обработка", u"Включить режим полной обработки файлов пакетов", wx.ITEM_CHECK )
-        self.menuService.Append( self.btFull )
-
-        self.wxMenuBar.Append( self.menuService, u"Сервис" )
-
-        self.menuHelp = wx.Menu()
-        self.menuitemManual = wx.MenuItem( self.menuHelp, wx.ID_ANY, u"Руководство"+ u"\t" + u"F1", u"Открыть руководство по работе с программой", wx.ITEM_NORMAL )
-        self.menuHelp.Append( self.menuitemManual )
-
-        self.menuHelp.AppendSeparator()
-
-        self.menuitemHelp = wx.MenuItem( self.menuHelp, wx.ID_ANY, u"О программе", u"Информация о программе", wx.ITEM_NORMAL )
-        self.menuHelp.Append( self.menuitemHelp )
-
-        self.wxMenuBar.Append( self.menuHelp, u"Помощь" )
-
-        self.SetMenuBar( self.wxMenuBar )
-
-
-        self.Centre( wx.BOTH )
-
-        # Connect Events
-        self.btRefresh.Bind( wx.EVT_BUTTON, self.on_refresh )
-        self.wxPacketList.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_package_list )
-        self.wxLogView.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_log_info )
-        self.btUpdate.Bind( wx.EVT_BUTTON, self.on_update )
-        self.Bind( wx.EVT_MENU, self.on_update, id = self.menuitemUpdate.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_menu_select_all, id = self.menuitem_select_all.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_menu_unselect_all, id = self.menuitem_unselect_all.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_exit, id = self.menuitemExit.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_config, id = self.menuConfig.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_purge, id = self.menuitemPurge.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_clean_buffer, id = self.menuitemCleanBuffer.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_links_update, id = self.menuitemLinksUpdate.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_btFull, id = self.btFull.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_help, id = self.menuitemManual.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_about, id = self.menuitemHelp.GetId() )
-
-    def __del__( self ):
-        pass
-
-
-    # Virtual event handlers, overide them in your derived class
-    def on_refresh( self, event ):
-        pass
-
-    def on_enter_package_list( self, event ):
-        pass
-
-    def on_enter_log_info( self, event ):
-        pass
-
-    def on_update( self, event ):
-        pass
-
-
-    def on_menu_select_all( self, event ):
-        pass
-
-    def on_menu_unselect_all( self, event ):
-        pass
-
-    def on_exit( self, event ):
-        pass
-
-    def on_config( self, event ):
-        pass
-
-    def on_purge( self, event ):
-        pass
-
-    def on_clean_buffer( self, event ):
-        pass
-
-    def on_links_update( self, event ):
-        pass
-
-    def on_btFull( self, event ):
-        pass
-
-    def on_help( self, event ):
-        pass
-
-    def on_about( self, event ):
-        pass
-
-    def sMainOnIdle( self, event ):
-    	self.sMain.SetSashPosition( 291 )
-    	self.sMain.Unbind( wx.EVT_IDLE )
-
-    def m_splitter2OnIdle( self, event ):
-    	self.m_splitter2.SetSashPosition( 0 )
-    	self.m_splitter2.Unbind( wx.EVT_IDLE )
-
-
-###########################################################################
-## Class fmConfig
-###########################################################################
-
-class fmConfig ( wx.Frame ):
-
-    def __init__( self, parent ):
-        wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = wx.EmptyString, pos = wx.DefaultPosition, size = wx.Size( 800,377 ), style = wx.CAPTION|wx.CLOSE_BOX|wx.FRAME_FLOAT_ON_PARENT|wx.RESIZE_BORDER|wx.TAB_TRAVERSAL )
-
-        self.SetSizeHints( wx.Size( -1,220 ), wx.DefaultSize )
-
-        bSizer31 = wx.BoxSizer( wx.VERTICAL )
-
-        bSizer31.SetMinSize( wx.Size( 500,-1 ) )
-        self.m_panel15 = wx.Panel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        bSizer34 = wx.BoxSizer( wx.VERTICAL )
-
-        fgSizer1 = wx.FlexGridSizer( 0, 2, 0, 0 )
-        fgSizer1.AddGrowableCol( 0 )
-        fgSizer1.SetFlexibleDirection( wx.HORIZONTAL )
-        fgSizer1.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_ALL )
-
-        self.m_staticText4 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Путь установки подсистем:", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.m_staticText4.Wrap( -1 )
-
-        fgSizer1.Add( self.m_staticText4, 0, wx.ALL, 5 )
-
-        self.wxEiisInstallPath = wx.DirPickerCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, u"Выберите директорию для установки подсистем", wx.DefaultPosition, wx.DefaultSize, wx.DIRP_DEFAULT_STYLE|wx.DIRP_SMALL )
-        self.wxEiisInstallPath.SetToolTip( u"Директория для установки подсистем" )
-
-        fgSizer1.Add( self.wxEiisInstallPath, 0, wx.ALL|wx.EXPAND, 5 )
-
-        self.m_staticText61 = wx.StaticText( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.m_staticText61.Wrap( -1 )
-
-        fgSizer1.Add( self.m_staticText61, 0, wx.ALL, 5 )
-
-        self.wxInstallToUserProfile = wx.CheckBox( self.m_panel15, wx.ID_ANY, u"устанавливать в профиль пользователя", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.wxInstallToUserProfile.SetValue(True)
-        self.wxInstallToUserProfile.SetToolTip( u"Выберите, если требуется установка в профиль пользователя. \nНапример, при отсутствии прав на установку в папку Program Files\n" )
-
-        fgSizer1.Add( self.wxInstallToUserProfile, 0, wx.ALL, 5 )
-
-        self.wxStaticText1 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Путь к репозиторию:", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.wxStaticText1.Wrap( -1 )
-
-        fgSizer1.Add( self.wxStaticText1, 0, wx.ALL, 5 )
-
-        self.wxRepoPath = wx.TextCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( 500,-1 ), 0 )
-        self.wxRepoPath.SetMaxLength( 256 )
-        self.wxRepoPath.SetToolTip( u"Путь к репозиторию " )
-
-        fgSizer1.Add( self.wxRepoPath, 0, wx.ALL|wx.EXPAND, 5 )
-
-        self.m_staticText3 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Количество потоков загрузки:", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.m_staticText3.Wrap( -1 )
-
-        fgSizer1.Add( self.m_staticText3, 0, wx.ALL, 5 )
-
-        wxThreadsCountChoices = [ u"1", u"2", u"3", u"4", u"5" ]
-        self.wxThreadsCount = wx.Choice( self.m_panel15, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wxThreadsCountChoices, 0 )
-        self.wxThreadsCount.SetSelection( 0 )
-        self.wxThreadsCount.SetToolTip( u"Количество потоков загрузки.\n\nВ некоторых случаях увеличение количества потоков уменьшает время загрузки файлов с сервера.\nУстанавливается опытным путем." )
-
-        fgSizer1.Add( self.wxThreadsCount, 0, wx.ALL, 5 )
-
-        self.m_staticText6 = wx.StaticText( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.m_staticText6.Wrap( -1 )
-
-        fgSizer1.Add( self.m_staticText6, 0, wx.ALL, 5 )
-
-        self.wxPurgePackets = wx.CheckBox( self.m_panel15, wx.ID_ANY, u"Удалять файлы подсистем с диска, при удалении пакета", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.wxPurgePackets.SetToolTip( u"Для сокращения объема закачиваемых файлов из репозитория можно оставлять локально файлы подсистем, при деактивации пакетов подсистем. В дальнейшем будут скачиваться только новые файлы." )
-
-        fgSizer1.Add( self.wxPurgePackets, 0, wx.ALL, 5 )
-
-        self.m_staticText7 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Кодировка", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.m_staticText7.Wrap( -1 )
-
-        fgSizer1.Add( self.m_staticText7, 0, wx.ALL, 5 )
-
-        self.wxEncode = wx.TextCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.wxEncode.SetToolTip( u"Кодировка симвлолв в файлах, используемых программой.\n\nПо-умолчанию UTF-8" )
-
-        fgSizer1.Add( self.wxEncode, 0, wx.ALL|wx.EXPAND, 5 )
-
-        self.m_staticText8 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Кодировка FTP-сервера", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.m_staticText8.Wrap( -1 )
-
-        fgSizer1.Add( self.m_staticText8, 0, wx.ALL, 5 )
-
-        self.wxFTPEncode = wx.TextCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.wxFTPEncode.SetToolTip( u"Кодировка символов сервера репозитория.\n\nПри возникновении ошибки в разпознавании имен файлов на сервере программой, установить кодировку символов, используемую сервером" )
-
-        fgSizer1.Add( self.wxFTPEncode, 0, wx.ALL|wx.EXPAND, 5 )
-
-
-        bSizer34.Add( fgSizer1, 0, wx.EXPAND, 5 )
-
-
-        bSizer34.Add( ( 0, 0), 1, wx.EXPAND, 5 )
-
-        sd = wx.StdDialogButtonSizer()
-        self.sdApply = wx.Button( self.m_panel15, wx.ID_APPLY )
-        sd.AddButton( self.sdApply )
-        self.sdCancel = wx.Button( self.m_panel15, wx.ID_CANCEL )
-        sd.AddButton( self.sdCancel )
-        sd.Realize();
-
-        bSizer34.Add( sd, 0, wx.EXPAND|wx.BOTTOM|wx.RIGHT, 5 )
-
-
-        self.m_panel15.SetSizer( bSizer34 )
-        self.m_panel15.Layout()
-        bSizer34.Fit( self.m_panel15 )
-        bSizer31.Add( self.m_panel15, 1, wx.EXPAND, 5 )
-
-
-        self.SetSizer( bSizer31 )
-        self.Layout()
-
-        self.Centre( wx.BOTH )
-
-        # Connect Events
-        self.wxInstallToUserProfile.Bind( wx.EVT_CHECKBOX, self.on_eiis_path_click )
-        self.sdApply.Bind( wx.EVT_BUTTON, self.Apply )
-        self.sdCancel.Bind( wx.EVT_BUTTON, self.Cancel )
-
-    def __del__( self ):
-        pass
-
-
-    # Virtual event handlers, overide them in your derived class
-    def on_eiis_path_click( self, event ):
-        pass
-
-    def Apply( self, event ):
-        pass
-
-    def Cancel( self, event ):
-        pass
-
-
+import wx.dataview as dv
+
+from eiisclient import (CONFIG_FILE_NAME, DEFAULT_ENCODING, DEFAULT_FTP_ENCODING, DEFAULT_INSTALL_PATH,
+                        PROFILE_INSTALL_PATH, WORK_DIR, __author__, __division__, __email__,
+                        __version__)
+from eiisclient.core.exceptions import DispatcherActivationError, PacketDeleteError
+from eiisclient.core.utils import ConfigDict, get_config_data, hash_calc, to_json
+from eiisclient.gui import *
+from eiisclient.gui.MainFrame import fmMain, fmConfig
+
+
+class MainFrame(fmMain):
+    def __init__(self, args):
+        self.logger = get_logger(self.log_append, debug=args.debug, logfile=args.logfile)
+        self.logger.debug('Инициализация программы')
+        super(MainFrame, self).__init__(None)
+
+        if not os.path.exists(WORK_DIR):
+            os.makedirs(WORK_DIR, exist_ok=True)
+
+        # инициализация параметров
+        self.config = ConfigDict()
+        self.config.repopath = None
+        self.config.threads = 1
+        self.config.purge = False
+        self.config.encode = DEFAULT_ENCODING
+        self.config.ftpencode = DEFAULT_FTP_ENCODING
+        self.config.install_to_profile = False
+        # обновление параметров из файла настроек
+        self.config.update(get_config_data(WORK_DIR))
+
+        self.manager = get_manager(self.config, self.logger)
+        self.pack_list = self.get_pack_list()
+
+        # инициализация интерфейса
+        self.wxLogView.Clear()
+        self.wxPackList.Clear()
+
+        col_01 = dv.DataViewColumn('', dv.DataViewTextRenderer(), 0, align=0, width=250, flags=1)
+        col_02 = dv.DataViewColumn('', dv.DataViewTextRenderer(), 1, align=0, width=450, flags=0)
+        self.wxInfo.AppendColumn(col_01)
+        self.wxInfo.AppendColumn(col_02)
+
+        self.wxStatusBar.SetFieldsCount(3, [100, 180])
+        self.wxStatusBar.SetStatusText('Версия: {}'.format(__version__))
+        self.wxStatusBar.SetStatusText('Обновление ЕИИС "Соцстрах"', 1)
+
+        self.checked = False
+        self.refresh_gui()
+
+        self.Show()
+
+    def refresh_gui(self):
+        try:
+            self.update_packet_list_view()
+            self.update_info_view()
+        except UnicodeDecodeError as err:
+            self.logger.error('Ошибка кодировка: {}'.format(err))
+        except DispatcherActivationError as err:
+            self.logger.error('Ошибка активации диспетчера: {}'.format(err))
+        except Exception as err:
+            self.logger.error('Ошибка: {}'.format(err))
+
+    # event functions
+    def on_enter_view_info(self, event):
+        self.wxInfo.SetFocus()
+
+    def on_pack_list_item_activated( self, event ):
+        print(event.Index)
+        if self.wxPackList.IsItemChecked(event.Index):
+            self.wxPackList.CheckItem(event.Index, False)
+        else:
+            self.wxPackList.CheckItem(event.Index, True)
+
+    def on_pack_list_item_select( self, event ):
+        pack_name = self.wxPackList.GetString(event.Selection)
+        info = '{} [{}]'.format(pack_name, self.pack_list[pack_name].origin)
+        self.wxStatusBar.SetStatusText(info, 2)
+
+    def on_pack_list_item_deselect( self, event ):
+        self.wxStatusBar.SetStatusText('', 2)
+
+    def on_enter_log_info(self, event):
+        self.wxLogView.SetFocus()
+
+    def on_pack_list_enter(self, event):
+        self.wxPackList.SetFocus()
+
+    def on_pack_list_leave(self, event):
+        """"""
+        self.wxStatusBar.SetStatusText('', 2)
+        try:
+            selected = self.wxPackList.GetSelections()[0]
+            self.wxPackList.Deselect(selected)
+        except IndexError:
+            pass
+
+    def on_info_enter(self, event):
+        self.wxInfo.SetFocus()
+
+    def on_about(self, event):
+        title = 'О программе'
+        msg = "Обновление подсистем ЕИИС 'Соцстрах'"
+        msg += '\n{}'.format(__division__)
+        msg += "\n{} <{}>".format(__author__, __email__)
+        msg += "\nВерсия: {}".format(__version__)
+
+        dlg = wx.MessageDialog(self, msg, title)
+        dlg.ShowModal()
+        dlg.Destroy()
+
+    def on_config(self, event):
+        ConfigFrame(self, self).Show()
+
+    def on_exit(self, event):
+        self.Close(True)
+
+    def on_check(self, event):
+        """Проверка наличия обновлений"""
+        # check for updates
+        self.checked = True
+        self.refresh_gui()
+
+    def on_update(self, event):
+        thread = threading.Thread(target=self.run)
+        thread.setDaemon(True)
+        thread.setName('Manager')
+        thread.start()
+
+    def on_refresh(self, event):
+        self.refresh_gui()
+
+    def on_btFull(self, event):
+        if self.btFull.IsChecked():
+            self.manager.set_full(True)
+        else:
+            self.manager.set_full(False)
+
+    def on_purge(self, event):
+        dlg = wx.MessageDialog(None, 'Вы уверены?',
+                               'Очистка удаленных пакетов', wx.YES_NO | wx.ICON_QUESTION)
+        ans = dlg.ShowModal()
+        if ans == wx.ID_YES:
+            self.logger.debug('Очистка от пакетов, помеченных как удаленные')
+            try:
+                self.manager.clean_removed()
+            except PacketDeleteError as err:
+                self.logger.error('Ошибка при очистке удаленных пакетов: {}'.format(err))
+            else:
+                self.logger.info('Очистка завершена')
+                self.refresh_gui()
+
+    def on_menu_select_all(self, event):
+        dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УСТАНОВИТЬ ВСЕ ПАКЕТЫ?',
+                               'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
+        if dlg.ShowModal() == wx.ID_YES:
+            self.wxPackList.Freeze()
+            for i in range(self.wxPackList.Count):
+                self.wxPackList.Check(i)
+                self._pack_list_toggle_item(i)
+                # self.wxPackList.SetCheckedItems(range(self.wxPackList.Count))
+            self.wxPackList.Thaw()
+
+    def on_menu_unselect_all(self, event):
+        dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УДАЛИТЬ ВСЕ ПАКЕТЫ?',
+                               'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
+        if dlg.ShowModal() == wx.ID_YES:
+            self.wxPackList.Freeze()
+            for i in range(self.wxPackList.Count):
+                self.wxPackList.Check(i, False)
+                self._pack_list_toggle_item(i)
+            self.wxPackList.Thaw()
+
+    def on_clean_buffer(self, event):
+        res = self.manager.clean_buffer()
+        if res:
+            self.logger.info('Буфер очищен')
+            self.refresh_gui()
+
+    def on_links_update(self, event):
+        self.manager.update_links()
+
+    def on_help(self, event):
+        import webbrowser
+        try:
+            docs_path = pathlib.Path(sys._MEIPASS).joinpath('docs')
+            url = docs_path.joinpath('index.html').as_uri()
+            webbrowser.open(url, new=1, autoraise=True)
+            self.logger.info('Запущен интернет-браузер с документацией')
+        except Exception as err:
+            self.logger.error(err)
+
+    def _pack_list_toggle_item(self, item_id):
+        pack_name = self.wxPackList.GetString(item_id)
+        installed = self.pack_list[pack_name].installed
+        if self.wxPackList.IsChecked(item_id):
+            if installed:
+                self.wxPackList.SetItemForegroundColour(item_id, wx.BLACK)
+            else:
+                self.wxPackList.SetItemForegroundColour(item_id, PCK_INS)
+        else:
+            if installed:
+                self.wxPackList.SetItemForegroundColour(item_id, PCK_DEL)
+            else:
+                self.wxPackList.SetItemForegroundColour(item_id, wx.BLACK)
+
+    def on_pack_list_item_toggled( self, event ):
+        self._pack_list_toggle_item(event.Selection)
+
+    ###
+    def _activate_interface(self):
+        """активация элементов интерфейса"""
+        self.logger.debug('активация элементов интерфейса')
+        self.wxPackList.Enable()
+        self.btUpdate.Enable()
+        self.btCheck.Enable()
+        self.btRefresh.Enable()
+        self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=True)
+        self.menuService.Enable(id=self.menuConfig.GetId(), enable=True)
+        self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=True)
+        self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=True)
+        self.menuService.Enable(id=self.btFull.GetId(), enable=True)
+        self.btFull.Check(False)
+        self.on_btFull(None)
+        #
+
+    def _deactivate_interface(self):
+        """деактивация элементов интерфейса от ненужных нажатий"""
+        self.logger.debug('деактивация элементов интерфейса')
+        self.wxPackList.Disable()
+        self.btUpdate.Disable()
+        self.btCheck.Disable()
+        self.btRefresh.Disable()
+        self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=False)
+        self.menuService.Enable(id=self.menuConfig.GetId(), enable=False)
+        self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=False)
+        self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=False)
+        self.menuService.Enable(id=self.btFull.GetId(), enable=False)
+        #
+
+    # logic functions
+    def run(self):
+        try:
+            self._deactivate_interface()
+            self.manager.activate()
+            self.manager.start(selected=self.get_selected_packages())
+        except Exception as err:
+            self.logger.error(err)
+            self.refresh_gui()
+        else:
+            self.logger.info('Обновление завершено\n')
+            # self.logger.info(100 * '-')
+            self.refresh_gui()
+        finally:
+            self.manager.deactivate()
+            self._activate_interface()
+
+    def log_append(self, message, level=None):
+        """"""
+        if level == 'DEBUG':
+            color = wx.BLUE
+        elif level == 'WARNING':
+            color = wx.GREEN
+        elif level == 'ERROR':
+            color = wx.RED
+        else:
+            color = wx.NullColour
+        self.wxLogView.SetDefaultStyle(wx.TextAttr(color))
+        self.wxLogView.AppendText(message)
+
+    def update_packet_list_view(self):
+        act_list = {
+            UPD: (self.wxPackList.SetItemBackgroundColour, PCK_UPD),
+            NON: (self.wxPackList.SetItemForegroundColour, wx.BLACK),
+            NEW: (self.wxPackList.SetItemBackgroundColour, PCK_NEW),
+            DEL: (self.wxPackList.SetItemBackgroundColour, PCK_ABD),
+        }
+
+        try:
+            self.wxPackList.Freeze()
+            self.wxPackList.Clear()
+
+            for pack_name in sorted(self.pack_list.keys()):
+                pack_data = self.pack_list[pack_name]
+                idx = self.wxPackList.Count
+                self.wxPackList.Append([pack_name])
+                st = pack_data.installed
+                self.wxPackList.Check(idx, pack_data.installed)
+                func, flag = act_list[pack_data.status]
+                func(idx, flag)
+        except Exception as err:
+            self.logger.exception(err)
+        finally:
+            self.wxPackList.Thaw()
+
+    def update_info_view(self):
+        """"""
+        info = self.wxInfo
+        info.Freeze()
+        info.DeleteAllItems()
+
+        data = self.manager.get_info(self.checked)
+        for k, v in data.items():
+            info.AppendItem([k, '-' if v is None else str(v)])
+
+        self.wxInfo.Thaw()
+
+    def get_selected_packages(self):
+        return self.wxPackList.GetCheckedStrings()
+
+    def get_pack_list(self, remote_index=None) -> PackList:
+        pack_list = PackList()
+        local_index_packs_cache = self.manager.get_local_index_packages()
+        installed_packs = self.manager.get_installed_packages()
+
+        # заполняем данными из индекс-кэша
+        for origin_pack_name in local_index_packs_cache:
+            alias_pack_name = local_index_packs_cache[origin_pack_name].get('alias') or origin_pack_name
+            pack_list[alias_pack_name] = PackData(
+                origin=origin_pack_name,
+                installed=False,
+                status=NON,
+            )
+
+        # обновляем статус установки имеющихся пакетов
+        for origin_pack_name in installed_packs:
+            _, pack_data = pack_list.get_by_origin(origin_pack_name)
+            if pack_data:
+                setattr(pack_data, 'installed', True)
+            else:
+                pack_list[origin_pack_name] = PackData(
+                    origin=origin_pack_name,
+                    installed=True,
+                    status=DEL,
+                )
+        if remote_index:  #
+            pass
+        return pack_list
+
+
+class ConfigFrame(fmConfig):
+    """"""
+    def __init__(self, mframe: MainFrame, *args, **kwargs):
+        super(ConfigFrame, self).__init__(*args, **kwargs)
+        self.config = mframe.config
+        self.mframe = mframe
+        self.config_hash = hash_calc(self.config)
+        # fix eiis install path states
+        self.install_to_profile = self.config.install_to_profile
+        self.eiis_path = PROFILE_INSTALL_PATH if self.install_to_profile else DEFAULT_INSTALL_PATH
+
+        self.wxRepoPath.Value = self.config.repopath or ''
+        self.wxInstallToUserProfile.SetValue(self.config.install_to_profile)
+        if self.config.install_to_profile:  # путь установки
+            self.wxEiisInstallPath.SetPath(PROFILE_INSTALL_PATH)
+        else:
+            self.wxEiisInstallPath.SetPath(DEFAULT_INSTALL_PATH)
+        self.wxEiisInstallPath.Enable(False)
+
+        self.wxThreadsCount.Select(self.config.threads - 1)
+        self.wxPurgePackets.SetValue(self.config.purge)
+        # значение кодировки файлов временно заблокировано до перехода на UTF-8
+        # self.wxEncode.SetValue(self.config.get('encode', 'UTF-8'))
+        self.wxEncode.SetValue(self.config.encode)
+        # self.wxEncode.SetValue('CP1251')
+        # self.wxEncode.Enable(False)
+        self.wxFTPEncode.SetValue(self.config.ftpencode)
+
+        self.sdApply.Label = 'Применить'
+        self.sdCancel.Label = 'Отменить'
+        self.sdCancel.SetFocus()
+
+    def on_eiis_path_click(self, event=None):
+        if self.wxInstallToUserProfile.GetValue():
+            self.wxEiisInstallPath.SetPath(PROFILE_INSTALL_PATH)
+        else:
+            self.wxEiisInstallPath.SetPath(DEFAULT_INSTALL_PATH)
+
+    def Apply(self, event):
+        if not self.wxRepoPath.GetValue():
+            wx.MessageBox('Укажите путь к репозиторию',
+                          'Настройки', wx.ICON_EXCLAMATION, None)
+            return
+
+        self.config.repopath = self.wxRepoPath.GetValue()
+        # self.config.eiispath = self.wxEiisInstallPath.GetPath()
+        self.config.install_to_profile = self.wxInstallToUserProfile.GetValue()
+        self.config.threads = int(self.wxThreadsCount.Selection) + 1
+        self.config.purge = self.wxPurgePackets.GetValue()
+        self.config.encode = self.wxEncode.GetValue().upper()
+        self.config.ftpencode = self.wxFTPEncode.GetValue().upper()
+
+        #  write to file if changed
+        if not hash_calc(self.config) == self.config_hash:
+            full = False
+
+            if not self.config.install_to_profile == self.install_to_profile:
+
+                packages = os.listdir(self.eiis_path)
+                if packages:
+                    dlg = wx.MessageDialog(None, 'Скопировать существующие подсистемы по новому пути?',
+                                           'Копирование пакетов', wx.YES_NO | wx.ICON_QUESTION)
+
+                    if dlg.ShowModal() == wx.ID_YES:
+                        new_eiis_path = PROFILE_INSTALL_PATH if self.config.install_to_profile else DEFAULT_INSTALL_PATH
+                        for package in packages:
+                            src = os.path.join(self.eiis_path, package)
+                            dst = os.path.join(new_eiis_path, package)
+                            try:
+                                self.mframe.manager.move_package(src, dst)
+                            except Exception as err:
+                                self.mframe.logger.warning('Не удалось переместить пакет {} в {}: {}'.format(
+                                    package, new_eiis_path, err))
+                                self.mframe.logger.warning(
+                                    'Не достаточно прав доступа или не закрыты файлы подсистемы')
+
+                full = True  # флаг смены пути для менеджера
+
+            confile = os.path.join(WORK_DIR, CONFIG_FILE_NAME)
+            with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
+                fp.write(to_json(self.config))
+
+            self.mframe.init_manager(full)  # set new manager
+            self.mframe.refresh_gui()  # update gui
+            self.mframe.logger.info('Настройки применены')
+            self.mframe.logger.info('-' * 100)
+
+        self.Destroy()
+
+    def Cancel(self, event):
+        self.Destroy()
