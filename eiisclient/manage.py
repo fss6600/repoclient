@@ -4,11 +4,10 @@ from __future__ import print_function
 import logging
 import os
 import shutil
-import sys
 import threading
 import weakref
 from collections import Counter, OrderedDict, namedtuple
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from datetime import datetime
 from enum import Enum
 from queue import Empty, Queue
@@ -16,37 +15,16 @@ from queue import Empty, Queue
 import pythoncom
 import winshell
 
-from eiisclient import (DEFAULT_INSTALL_PATH, PROFILE_INSTALL_PATH, WORK_DIR)
-from eiisclient.core.dispatch import BaseDispatcher, get_dispatcher
-from eiisclient.core.exceptions import (DispatcherActivationError, DispatcherNotActivated,
-                                        DownloadPacketError, LinkUpdateError, PacketDeleteError, RepoIsBusy,
-                                        PacketInstallError, LinkDisabled, LinkNoData)
-from eiisclient.core.utils import file_hash_calc, from_json, get_temp_dir, to_json, chwmod
-
-CONFIGFILE = os.path.normpath(os.path.join(WORK_DIR, 'config.json'))
-INDEXFILE = os.path.normpath(os.path.join(WORK_DIR, 'index.json'))
+from eiisclient import DEFAULT_ENCODING, DEFAULT_FTP_ENCODING, WORK_DIR, PROFILE_INSTALL_PATH, DEFAULT_INSTALL_PATH
+from eiisclient.dispatch import BaseDispatcher, get_dispatcher
+from eiisclient.exceptions import (DispatcherActivationError, DownloadPacketError, LinkUpdateError, NoUpdates,
+                                   PacketDeleteError, RepoIsBusy, PacketInstallError, LinkDisabled, LinkNoData)
+from eiisclient.utils import (file_hash_calc, from_json, get_temp_dir, to_json, chwmod, get_config_data)
+from eiisclient.structures import (PackList, Status, ConfigDict, PackStatus, PackData)
 
 
 def get_stdout_logger() -> logging.Logger:
-    logger = logging.Logger(__name__)
-    con_handler = logging.StreamHandler(sys.stdout)
-    logger.addHandler(con_handler)
-    logger.setLevel(logging.INFO)
-    return logger
-
-
-class Action(Enum):
-    """
-    Тип действия над пакетом
-    """
-    install, update, delete = range(3)
-
-
-class Status(Enum):
-    """
-    Статус пакета на ПК пользователя
-    """
-    installed, removed, purged = range(3)
+    return logging.Logger(__name__)
 
 
 class Manager(object):
@@ -54,49 +32,80 @@ class Manager(object):
     Основной обработчик пакетов на клиенте.
     """
 
-    def __init__(self, config, **kwargs):
-        self.config = config
-        self.logger = kwargs.get('logger', get_stdout_logger())
-        self.full = kwargs.get('full', False)
+    def __init__(self, logger=None, **kwargs):
+        # инициализация параметров
+        self.config = ConfigDict()
+        self.config.repopath = None
+        self.config.threads = 1
+        self.config.purge = False
+        self.config.encode = DEFAULT_ENCODING
+        self.config.ftpencode = DEFAULT_FTP_ENCODING
+        self.config.install_to_profile = False
+        if not os.path.exists(WORK_DIR):
+            os.makedirs(WORK_DIR, exist_ok=True)
+        # обновление параметров из файла настроек
+        self.config.update(get_config_data(WORK_DIR))
+        #
+        self.full = False
         self.eiispath = PROFILE_INSTALL_PATH if self.config.install_to_profile else DEFAULT_INSTALL_PATH
         self.tempdir = get_temp_dir(prefix='eiis_man_tmp_')
         self.buffer = os.path.join(WORK_DIR, 'buffer')
         self.task_queue_k = kwargs.get('kqueue', 2)  # коэффициент размера основной очереди загрузки
         self.local_index_file = os.path.join(WORK_DIR, 'index.json')
         self.local_index_file_hash = os.path.join('{}.sha1'.format(self.local_index_file))
-        self.action_list = {}
-        self.disp = None
-        self.local_index = None
-        self.local_index_hash = None
-        self.remote_index = None
-        self.remote_index_hash = None
-        self.desktop = winshell.desktop()
-        self.finalize = weakref.finalize(self, self._clean)
+        self._pack_list = self._get_pack_list(False)  # dict - перечень пакетов со статусами
+        self._info_list = self._get_info_list(False)  # dict - информация о репозитории, установленных пакетах,..
+        self._desktop = winshell.desktop()
+        self._finalize = weakref.finalize(self, self._clean)
 
+        self.disp = None
+        self.logger = logger or get_stdout_logger()
         if self.logger.level == logging.DEBUG:
             self._init_log()
 
     def __repr__(self):
         return '<Manager: {}>'.format(id(self))
 
-    def start(self, selected: Iterable):
+    @property
+    def pack_list(self):
+        return self._pack_list
+
+    @property
+    def info_list(self):
+        return self._info_list
+
+    def check_updates(self):
+        try:
+            self._activate()
+            self.check_repo()
+
+            if not self.repo_updated:
+                raise NoUpdates
+
+            self._pack_list = self._get_pack_list(remote=True)
+            self._info_list = self._get_info_list(remote=True)
+
+        finally:
+            self._deactivate()
+
+    def start_update(self):
         """"""
         #  определение action_list на установку, обновление и удаление
-        install, update, delete = self.get_lists_difference(
-            self.get_installed_packages(), selected=selected
-        )
+        # install, update, delete = self.get_lists_difference(
+        #     self.get_installed_packages(), selected=selected
+        # )
 
         try:
-            self.activate()
-            self.action_list['install'] = self.parse_data_by_action_gen(install, Action.install)
-            self.action_list['update'] = self.parse_data_by_action_gen(update, Action.update)
-            self.action_list['delete'] = self.parse_data_by_action_gen(delete, Action.delete)
+            # self.activate()
+            # self.action_list['install'] = self.parse_data_by_action_gen(install, Action.install)
+            # self.action_list['update'] = self.parse_data_by_action_gen(update, Action.update)
+            # self.action_list['delete'] = self.parse_data_by_action_gen(delete, Action.delete)
+
+            # загрузка файлов пакетов из репозитория
+            self.handle_files(pack_list)
 
             # деактивация пакетов, помеченных на удаление
             self.delete_packages()
-
-            # загрузка файлов пакетов из репозитория
-            self.handle_files()
 
             # перемещение скачанных пакетов из буфера в папку установки
             if self.buffer_is_empty():
@@ -105,57 +114,48 @@ class Manager(object):
                 self.logger.info('Перенос пакетов из буфера в папку установки:')
                 self.install_packets(selected)
 
-            # запись данных нового индекса и контрольной суммы
-            if not os.path.exists(WORK_DIR):
-                os.makedirs(WORK_DIR, exist_ok=True)
-
             with open(self.local_index_file, 'w') as fp_index, open(self.local_index_file_hash, 'w') as fp_hash:
                 fp_index.write(to_json(self.remote_index))
                 fp_hash.write(self.remote_index_hash)
 
             # обновление ярлыков на рабочем столе
-            self.update_links()
+            self.update_links(pack_list)
         except Exception as err:
 
             self.logger.exception(err)
             self.logger.error('Ошибка при удалении пакета')
 
         finally:
-            self.deactivate()
+            self._deactivate()
 
     def check_repo(self):
+        """Проверка репозитория на регламентные работы"""
         if self.disp.repo_is_busy():
             raise RepoIsBusy
 
+    @property
     def repo_updated(self) -> bool:
-        '''Проверка на наличие обновлений'''
-        if self.remote_index_hash is None:
-            self.remote_index_hash = self.get_remote_index_hash()
-        if self.local_index_hash is None:
-            self.local_index_hash = self.get_local_index_hash()
-        return not self.local_index_hash == self.remote_index_hash
+        """Проверка на наличие обновлений"""
+        remote_index_hash = self.get_remote_index_hash()
+        local_index_hash = self.get_local_index_hash()
+        return not local_index_hash == remote_index_hash
 
-    def buffer_content(self) -> tuple:
-        if not os.path.exists(self.buffer):
-            return ()
-        return tuple(pack for pack in os.listdir(self.buffer) if os.path.isdir(os.path.join(self.buffer, pack)))
+    def buffer_content(self) -> list:
+        if os.path.exists(self.buffer):
+            return [pack for pack in os.listdir(self.buffer) if os.path.isdir(os.path.join(self.buffer, pack))]
+        return []
 
     def buffer_count(self) -> int:
-        return len(list(self.buffer_content()))
+        return len(self.buffer_content())
 
     def buffer_is_empty(self) -> bool:
-        try:
-            count = self.buffer_count()
-        except FileNotFoundError:
-            return True
-        else:
-            return count == 0
+        return self.buffer_count() == 0
 
-    @property
-    def activated(self) -> bool:
-        return True if self.disp else False
+    # @property
+    # def activated(self) -> bool:
+    #     return True if self.disp else False
 
-    def activate(self):
+    def _activate(self):
         ''''''
         try:
             self.disp = get_dispatcher(self.config.repopath, logger=self.logger, encode=self.config.encode,
@@ -165,94 +165,64 @@ class Manager(object):
             self.logger.error('Сервер недоступен или введен неправильный путь к репозиторию')
             raise DispatcherActivationError from err
 
-        self.check_repo()
-
-        self.local_index = self.get_local_index()
-
-        if self.repo_updated():
-            self.remote_index = self.get_remote_index() or {}
-        else:
-            self.remote_index = self.local_index
-
-        self.action_list['install'] = ()
-        self.action_list['update'] = ()
-        self.action_list['delete'] = ()
-
-    def deactivate(self):
+    def _deactivate(self):
         if self.disp:
             self.disp.close()
             self.disp = None
-        self.action_list = {}
-        self.local_index = None
-        self.local_index_hash = None
-        self.remote_index = None
-        self.remote_index_hash = None
 
-    def get_info(self, get_remote=False) -> dict:
+    def _get_info_list(self, remote=False) -> dict:
         packets_in_repo = None
         local_index_last_change = None
         remote_index_last_change = None
         repo_updated = None
 
-        if get_remote:
-            try:
-                self.activate()
-
-                if os.path.exists(self.local_index_file):
-                    local_index_last_change = os.path.getmtime(self.local_index_file)
-                    local_index_last_change = datetime.fromtimestamp(local_index_last_change).strftime('%d-%m-%Y %H:%M:%S')
-
-                remote_index_last_change = self.disp.index_create_date.strftime('%d-%m-%Y %H:%M:%S')
-
-                packets_in_repo = len(self.remote_index.get('packages', {}).keys())
-                repo_updated = 'имеются обновления' if self.repo_updated() else 'нет обновлений'
-
-            except DispatcherActivationError:
-                pass
-
-            finally:
-                self.deactivate()
+        if remote:
+            if os.path.exists(self.local_index_file):
+                local_index_last_change = os.path.getmtime(self.local_index_file)
+                local_index_last_change = datetime.fromtimestamp(local_index_last_change).strftime(
+                    '%d-%m-%Y %H:%M:%S')
+            remote_index_last_change = self.disp.index_create_date.strftime('%d-%m-%Y %H:%M:%S')
+            packets_in_repo = len(self._get_remote_index().get('packages', {}))
+            repo_updated = 'имеются обновления' if self.repo_updated else 'нет обновлений'
 
         info = OrderedDict()
-        info.setdefault('Дата последнего запуска программы', local_index_last_change)
+        info.setdefault('Дата последнего обновления', local_index_last_change)
         info.setdefault('Дата обновления на сервере', remote_index_last_change)
         info.setdefault('Наличие обновлений', repo_updated)
         info.setdefault('Пакетов в репозитории', packets_in_repo)
-        info.setdefault('Установлено подсистем', len(self.get_installed_packages()))
+        info.setdefault('Установлено подсистем', len(self._installed_packages()))
         info.setdefault('Пакетов в буфере', self.buffer_count())
         info.setdefault('Путь - подсистемы', self.eiispath)
         info.setdefault('Путь - репозиторий', self.config.repopath)
 
         return info
 
-    def get_installed_packages(self) -> tuple:
-        '''Список активных подсистем
+    def _get_local_packages(self) -> Iterator:
+        """Возвращает имена всех директорий (пакетов) по пути установки подсистем"""
+        if os.path.exists(self.eiispath):
+            return (d for d in os.listdir(self.eiispath) if os.path.isdir(os.path.join(self.eiispath, d)))
+        else:
+            return iter()
+
+    def _installed_packages(self) -> list:
+        """Список активных подсистем
 
         Возвращает кортеж с подсистемами, найденными в папке установки на локальной машине.
         Пакеты с подсистемами, названия которых заканчиваются на .removed - считаются удаленными и не
-        попадают в список.'''
+        попадают в список."""
+        return [name for name in self._get_local_packages() if not name.endswith('.removed')]
 
-        if os.path.exists(self.eiispath):
-            active_list = (d for d in os.listdir(self.eiispath) if os.path.isdir(os.path.join(self.eiispath, d)))
-            return tuple(sorted((name for name in active_list if not name.endswith('.removed'))))
-        else:
-            return tuple()
+    def _removed_packages(self) -> list:
+        return [name for name in self._get_local_packages() if name.endswith('.removed')]
 
-    def get_removed_packages(self) -> tuple:
-        if os.path.exists(self.eiispath):
-            active_list = (d for d in os.listdir(self.eiispath) if os.path.isdir(os.path.join(self.eiispath, d)))
-            return tuple(sorted((name for name in active_list if name.endswith('.removed'))))
-        else:
-            return tuple()
-
-    @staticmethod
-    def get_lists_difference(installed: Iterable, selected: Iterable) -> tuple:
-        common = set(installed) & set(selected)
-        install = sorted(set(selected) ^ common)
-        delete = sorted(set(installed) ^ common)
-        update = sorted(common)
-
-        return install, update, delete
+    # @staticmethod
+    # def get_lists_difference(installed: Iterable, selected: Iterable) -> tuple:
+    #     common = set(installed) & set(selected)
+    #     install = sorted(set(selected) ^ common)
+    #     delete = sorted(set(installed) ^ common)
+    #     update = sorted(common)
+    #
+    #     return install, update, delete
 
     def delete_packages(self):
         for package in self.action_list['delete']:
@@ -294,17 +264,16 @@ class Manager(object):
             except Exception as err:
                 raise PacketDeleteError(err)
 
-    def get_remote_index(self) -> dict:
-        self.check_repo()
+    def _get_remote_index(self) -> dict:
+        try:
+            return self.disp.get_index_data()
+        except FileNotFoundError:
+            self.logger.error('Не найден индекс-файл в репозитории')
+            raise NoIndexFileOnServerError
 
-        if self.activated:
-            try:
-                return self.disp.get_index_data()
-            except FileNotFoundError:
-                self.logger.error('Не найден индекс-файл в репозитории')
-                raise
-        else:
-            raise DispatcherNotActivated
+    #
+    # def get_remote_index_packages(self) -> dict:
+    #     return self.get_remote_index().get('packages', {})
 
     def get_remote_index_hash(self) -> str:
         return self.disp.get_index_hash()
@@ -319,8 +288,9 @@ class Manager(object):
         except Exception:
             return {}
 
-    def get_local_index_packages(self) -> dict:
-        return self.get_local_index().get('packages', {})
+    #
+    # def get_local_index_packages(self) -> dict:
+    #     return self.get_local_index().get('packages', {})
 
     def get_local_index_hash(self) -> str:
         try:
@@ -328,7 +298,81 @@ class Manager(object):
                 # return from_json(fp.read())
                 return fp.read()
         except FileNotFoundError:
-            return ''
+            return None
+    #
+    # def build_pack_list(self, remote=False):
+    #     self._pack_list = self._get_pack_list(remote)
+
+    def _get_pack_list(self, remote) -> PackList:
+        pack_list = PackList()
+        local_index_packs_cache = self.get_local_index().get('packages', {})
+        if remote:
+            remote_index_packages = self._get_remote_index().get('packages', {})
+        else:
+            remote_index_packages = None
+
+        # заполняем данными из локального индекс-кэша
+        for origin_pack_name in local_index_packs_cache:
+            alias_pack_name = local_index_packs_cache[origin_pack_name].get('alias') or origin_pack_name
+            status = PackStatus.NON
+
+            if remote:
+                if origin_pack_name in remote_index_packages:
+                    # делаем сверку контрольных сумм пакетов
+                    local_pack_hash = local_index_packs_cache[origin_pack_name]['phash']
+                    remote_pack_hash = remote_index_packages[origin_pack_name]['phash']
+                    if not local_pack_hash == remote_pack_hash:
+                        status = PackStatus.UPD
+
+                    # помечаем пакет на удаление, если алиасы отличаются - сменился на сервере
+                    local_pack_alias = local_index_packs_cache[origin_pack_name]['alias']
+                    remote_pack_alias = remote_index_packages[origin_pack_name]['alias']
+                    if not local_pack_alias == remote_pack_alias:
+                        status = PackStatus.DEL
+                else:
+                    # пакета нет в репозитории, но есть в локальном кэше
+                    status = PackStatus.DEL
+
+            pack_list[alias_pack_name] = PackData(
+                origin=origin_pack_name,
+                installed=False,
+                status=status,
+            )
+
+        if remote:  #
+            # заполняем данными из индекса с сервера
+            for origin_pack_name in remote_index_packages:
+                if origin_pack_name in local_index_packs_cache:
+                    local_alias = local_index_packs_cache[origin_pack_name]['alias']
+                    remote_alias = remote_index_packages[origin_pack_name]['alias']
+                    if not remote_alias == local_alias:
+                        alias_pack_name = remote_index_packages[origin_pack_name].get('alias') or origin_pack_name
+                        pack_list[alias_pack_name] = PackData(
+                            origin=origin_pack_name,
+                            installed=False,
+                            status=PackStatus.UPD,
+                        )
+                else:
+                    alias_pack_name = remote_index_packages[origin_pack_name].get('alias') or origin_pack_name
+                    pack_list[alias_pack_name] = PackData(
+                        origin=origin_pack_name,
+                        installed=False,
+                        status=PackStatus.NEW,
+                    )
+
+        # обновляем статус установки имеющихся пакетов
+        for origin_pack_name in self._installed_packages():
+            _, pack_data = pack_list.get_by_origin(origin_pack_name)
+            if pack_data:
+                setattr(pack_data, 'installed', True)
+            else:
+                pack_list[origin_pack_name] = PackData(
+                    origin=origin_pack_name,
+                    installed=True,
+                    status=PackStatus.DEL,
+                )
+
+        return pack_list
 
     def get_local_packet_status(self, packet_name) -> Status:
         fp = os.path.join(self.eiispath, packet_name)
@@ -402,8 +446,8 @@ class Manager(object):
                         else:
                             for file in lst:
                                 dst = os.path.join(self.eiispath, package, file)
-                                if act == Action.update and os.path.exists(dst) and local_files[file] == remote_files[
-                                    file]:
+                                if act == Action.update and os.path.exists(dst) and \
+                                        local_files[file] == remote_files[file]:
                                     continue
 
                                 hash = remote_files[file]
@@ -501,7 +545,7 @@ class Manager(object):
     def install_packets(self, selected: Iterable):
         '''Перемещение пакетов из буфера в папку установки'''
         for package in self.buffer_content():
-            if not package in selected:  # возможно пакет остался с прошлой неудачной установки
+            if package not in selected:  # возможно пакет остался с прошлой неудачной установки
                 self.logger.debug('{} есть в буфере, но нет в списке устанавливаемых пакетов - пропуск'.format(package))
                 continue
 
@@ -520,7 +564,7 @@ class Manager(object):
 
     def update_links(self):
         self.logger.info('Обновление ярлыков на рабочем столе')
-        for packet in self.get_installed_packages():
+        for packet in self._installed_packages():
             try:
                 title, exe_file_path = self._get_link_data(packet)
                 self.create_shortcut(title, exe_file_path)
@@ -557,7 +601,7 @@ class Manager(object):
 
     def remove_shortcut(self, packet):
         title, _ = self._get_link_data(packet)
-        link_path = os.path.join(self.desktop, title + '.lnk')
+        link_path = os.path.join(self._desktop, title + '.lnk')
         try:
             os.unlink(link_path)
         except PermissionError:
@@ -719,7 +763,7 @@ class Worker(threading.Thread):
                     self.logger.debug(
                         '{}<task-{}> ({}|{}|{})'.format(self, task_id, task.packetname, task.action, task.src))
 
-                    if not task.packetname in self.packages_started:  # для вывода информации о загрузке пакета
+                    if task.packetname not in self.packages_started:  # для вывода информации о загрузке пакета
                         self.packages_started.add(task.packetname)
                         new_pack = True
                     else:
@@ -755,7 +799,8 @@ class Worker(threading.Thread):
                                 self.exceptions.put('Неверная контрольная сумма файла "{}" из пакета "{}"'.format(
                                     os.path.basename(task.src), task.packetname))
                             else:
-                                # fixme: при установленном максимальном размере, вставка в очередь блокирует процесс. перерсмотреть на возможность асинхронной работы
+                                # fixme: при установленном максимальном размере, вставка в очередь блокирует процесс.
+                                # перерсмотреть на возможность асинхронной работы
                                 self.queue.put(task)
                         else:
                             try:

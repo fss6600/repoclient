@@ -8,7 +8,7 @@ from pathlib import Path
 
 from setuptools import find_packages, setup
 
-from eiisclient.version import get_version
+from eiisclient.__version__ import __version__
 
 requirements = [ ]
 
@@ -21,7 +21,7 @@ test_requirements = [ ]
 
 def build_exe():
     pyi = r'C:\Users\mb.petrov.66\workspace\python\eiisrepo\client\.venv\py34\Scripts\pyinstaller.exe'
-    
+
     spec = Path(__file__).parent / 'eiisclient.spec'
     os.system('{} --clean {}'.format(pyi, spec))
 
@@ -68,6 +68,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     # url='https://github.com//eiisclient',
-    version=get_version(),
+    version=__version__,
     zip_safe=False,
         )

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from setuptools import find_packages, setup
 
-from eiisclient.version import get_version
+from eiisclient.__version__ import __version__
 
 requirements = [ ]
 
@@ -68,6 +68,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     # url='https://github.com//eiisclient',
-    version=get_version(),
+    version=__version__,
     zip_safe=False,
         )

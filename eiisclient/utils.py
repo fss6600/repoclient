@@ -5,6 +5,7 @@ import json
 import os
 import stat
 import time
+from argparse import ArgumentParser
 from tempfile import TemporaryDirectory
 
 from eiisclient import DEFAULT_ENCODING
@@ -83,19 +84,17 @@ def chwmod(fpath, sleep=TIMETOSLEEP):
         time.sleep(sleep)
 
 
-class ConfigDict(dict):
-    """Настройки программы
+def get_args():
+    """"""
+    parser = ArgumentParser(prog='eiisclient.exe')
+    parser.add_argument("-d", "--debug", dest='debug', action="store_true",
+                        default=None, help="включить режим отладки")
+    parser.add_argument("-l", "--log", dest='logfile', action="store_true",
+                        default=None, help="записывать сообщения в рабочей директории")
 
-    Класс для хранения данных параметров программы с возможностью доступа к данным через атрибуты.
-    При отсутствии запрашиваемого атрибута или ключа, возвращает None, вместо ошибки KeyError
-    """
-    __setattr__ = dict.__setitem__
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def __getattr__(self, item):
-        if item not in self:
-            return None
-        else:
-            return self.__getitem__(item)
+    try:
+        args = parser.parse_args()
+    except Exception:
+        raise SystemExit(parser.format_usage())
+    else:
+        return args

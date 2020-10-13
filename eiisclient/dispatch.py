@@ -10,7 +10,7 @@ from datetime import datetime
 import locale
 
 from eiisclient import DEFAULT_ENCODING
-from eiisclient.core.utils import chwmod, from_json, get_temp_dir, gzip_read
+from eiisclient.utils import chwmod, from_json, get_temp_dir, gzip_read
 
 BUSYMESSAGE = '__REGLAMENT__'
 

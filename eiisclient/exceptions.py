@@ -1,5 +1,4 @@
-###  Exceptions
-
+# Exceptions
 
 class RepoIsBusy(Exception):
     def __str__(self):
@@ -54,6 +53,9 @@ class LinkDisabled(Exception):
     pass
 
 
+class NoIndexFileOnServer(Exception):
+    def __str__(self):
+        return 'Не найден индекс-файл в репозитории'
 
 
 class InstallPermissionError(Exception):

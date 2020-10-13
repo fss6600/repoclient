@@ -1,43 +1,45 @@
 # -*- coding: utf-8 -*-
+import logging
 import os
 import pathlib
 import sys
 import threading
+from logging.handlers import RotatingFileHandler
 
 import wx
 import wx.dataview as dv
 
-from eiisclient import (CONFIG_FILE_NAME, DEFAULT_ENCODING, DEFAULT_FTP_ENCODING, DEFAULT_INSTALL_PATH,
-                        PROFILE_INSTALL_PATH, WORK_DIR, __author__, __division__, __email__,
-                        __version__)
-from eiisclient.core.exceptions import DispatcherActivationError, PacketDeleteError
-from eiisclient.core.utils import ConfigDict, get_config_data, hash_calc, to_json
-from eiisclient.gui import *
+from eiisclient import (__version__, __email__, __division__, __author__,
+                        PROFILE_INSTALL_PATH, DEFAULT_INSTALL_PATH,
+                        WORK_DIR, CONFIG_FILE_NAME, DEFAULT_ENCODING)
+from eiisclient.structures import PackStatus
+from eiisclient.exceptions import (DispatcherActivationError, PacketDeleteError, RepoIsBusy, NoUpdates)
+from eiisclient.manage import Manager
+from eiisclient.utils import hash_calc, to_json
 from eiisclient.gui.MainFrame import fmMain, fmConfig
+
+# colors
+PCK_NEW = wx.Colour(210, 240, 250, 0)  # новый пакет - нет локально, есть в репозитории
+PCK_UPD = wx.Colour(210, 250, 210, 0)  # обновленный пакет - есть локально, есть в репозитории
+PCK_ABD = wx.Colour(250, 220, 210, 0)  # исиротевший пакет (abandoned) - есть локально, нет в репозитории
+PCK_INS = wx.BLUE  # пакет помечен на установку
+PCK_DEL = wx.RED  # пакет помечен на удаление
 
 
 class MainFrame(fmMain):
     def __init__(self, args):
         self.logger = get_logger(self.log_append, debug=args.debug, logfile=args.logfile)
+        self.debug = args.debug
         self.logger.debug('Инициализация программы')
         super(MainFrame, self).__init__(None)
 
-        if not os.path.exists(WORK_DIR):
-            os.makedirs(WORK_DIR, exist_ok=True)
-
-        # инициализация параметров
-        self.config = ConfigDict()
-        self.config.repopath = None
-        self.config.threads = 1
-        self.config.purge = False
-        self.config.encode = DEFAULT_ENCODING
-        self.config.ftpencode = DEFAULT_FTP_ENCODING
-        self.config.install_to_profile = False
-        # обновление параметров из файла настроек
-        self.config.update(get_config_data(WORK_DIR))
-
-        self.manager = get_manager(self.config, self.logger)
-        self.pack_list = self.get_pack_list()
+        self.checked = False
+        self.pack_action_list = {
+            PackStatus.UPD: (self.wxPackList.SetItemBackgroundColour, PCK_UPD),
+            PackStatus.NON: (self.wxPackList.SetItemForegroundColour, wx.BLACK),
+            PackStatus.NEW: (self.wxPackList.SetItemBackgroundColour, PCK_NEW),
+            PackStatus.DEL: (self.wxPackList.SetItemBackgroundColour, PCK_ABD),
+        }
 
         # инициализация интерфейса
         self.wxLogView.Clear()
@@ -52,40 +54,28 @@ class MainFrame(fmMain):
         self.wxStatusBar.SetStatusText('Версия: {}'.format(__version__))
         self.wxStatusBar.SetStatusText('Обновление ЕИИС "Соцстрах"', 1)
 
-        self.checked = False
-        self.refresh_gui()
 
+        # инициализация менеджера
+        self.manager = Manager(logger=self.logger)
+        # self.pack_list = self.manager.get_pack_list()
+
+        self.refresh_gui()
         self.Show()
 
-    def refresh_gui(self):
-        try:
-            self.update_packet_list_view()
-            self.update_info_view()
-        except UnicodeDecodeError as err:
-            self.logger.error('Ошибка кодировка: {}'.format(err))
-        except DispatcherActivationError as err:
-            self.logger.error('Ошибка активации диспетчера: {}'.format(err))
-        except Exception as err:
-            self.logger.error('Ошибка: {}'.format(err))
-
     # event functions
-    def on_enter_view_info(self, event):
-        self.wxInfo.SetFocus()
-
-    def on_pack_list_item_activated( self, event ):
-        print(event.Index)
-        if self.wxPackList.IsItemChecked(event.Index):
-            self.wxPackList.CheckItem(event.Index, False)
-        else:
-            self.wxPackList.CheckItem(event.Index, True)
+    # def on_pack_list_item_activated( self, event ):
+    #     if self.wxPackList.IsItemChecked(event.Index):
+    #         self.wxPackList.CheckItem(event.Index, False)
+    #     else:
+    #         self.wxPackList.CheckItem(event.Index, True)
 
     def on_pack_list_item_select( self, event ):
         pack_name = self.wxPackList.GetString(event.Selection)
-        info = '{} [{}]'.format(pack_name, self.pack_list[pack_name].origin)
+        info = '{} [{}]'.format(pack_name, self.manager.pack_list[pack_name].origin)
         self.wxStatusBar.SetStatusText(info, 2)
 
-    def on_pack_list_item_deselect( self, event ):
-        self.wxStatusBar.SetStatusText('', 2)
+    # def on_pack_list_item_deselect( self, event ):
+    #     self.wxStatusBar.SetStatusText('', 2)
 
     def on_enter_log_info(self, event):
         self.wxLogView.SetFocus()
@@ -102,7 +92,7 @@ class MainFrame(fmMain):
         except IndexError:
             pass
 
-    def on_info_enter(self, event):
+    def on_enter_view_info(self, event):
         self.wxInfo.SetFocus()
 
     def on_about(self, event):
@@ -123,13 +113,10 @@ class MainFrame(fmMain):
         self.Close(True)
 
     def on_check(self, event):
-        """Проверка наличия обновлений"""
-        # check for updates
-        self.checked = True
-        self.refresh_gui()
+        self.do_updates_check()
 
     def on_update(self, event):
-        thread = threading.Thread(target=self.run)
+        thread = threading.Thread(target=self.do_update)
         thread.setDaemon(True)
         thread.setName('Manager')
         thread.start()
@@ -197,29 +184,36 @@ class MainFrame(fmMain):
         except Exception as err:
             self.logger.error(err)
 
+    def on_pack_list_item_toggled( self, event ):
+        self._pack_list_toggle_item(event.Selection)
+
     def _pack_list_toggle_item(self, item_id):
         pack_name = self.wxPackList.GetString(item_id)
-        installed = self.pack_list[pack_name].installed
+        # пакет невозможно установить - нет в репозитории
+        if self.manager.pack_list[pack_name].status == PackStatus.DEL:
+            self.wxPackList.Check(item_id, False)
+            self.wxPackList.SetItemForegroundColour(item_id, PCK_DEL)
+            return
+        installed = self.manager.pack_list[pack_name].installed
         if self.wxPackList.IsChecked(item_id):
             if installed:
                 self.wxPackList.SetItemForegroundColour(item_id, wx.BLACK)
             else:
                 self.wxPackList.SetItemForegroundColour(item_id, PCK_INS)
         else:
+
             if installed:
                 self.wxPackList.SetItemForegroundColour(item_id, PCK_DEL)
             else:
                 self.wxPackList.SetItemForegroundColour(item_id, wx.BLACK)
 
-    def on_pack_list_item_toggled( self, event ):
-        self._pack_list_toggle_item(event.Selection)
-
     ###
-    def _activate_interface(self):
+    def activate_interface(self):
         """активация элементов интерфейса"""
         self.logger.debug('активация элементов интерфейса')
         self.wxPackList.Enable()
-        self.btUpdate.Enable()
+        if self.checked:
+            self.btUpdate.Enable()
         self.btCheck.Enable()
         self.btRefresh.Enable()
         self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=True)
@@ -231,7 +225,7 @@ class MainFrame(fmMain):
         self.on_btFull(None)
         #
 
-    def _deactivate_interface(self):
+    def deactivate_interface(self):
         """деактивация элементов интерфейса от ненужных нажатий"""
         self.logger.debug('деактивация элементов интерфейса')
         self.wxPackList.Disable()
@@ -246,21 +240,47 @@ class MainFrame(fmMain):
         #
 
     # logic functions
-    def run(self):
+    def refresh_gui(self):
         try:
-            self._deactivate_interface()
-            self.manager.activate()
-            self.manager.start(selected=self.get_selected_packages())
+            self.update_packet_list_view()
+            self.update_info_view()
+        except UnicodeDecodeError as err:
+            self.logger.error('Ошибка кодировка: {}'.format(err))
+        except DispatcherActivationError as err:
+            self.logger.error('Ошибка активации диспетчера: {}'.format(err))
+        except Exception as err:
+            self.logger.error('Ошибка: {}'.format(err))
+
+    def do_updates_check(self):
+        """Проверка наличия обновлений"""
+        try:
+            self.deactivate_interface()
+            self.manager.check_updates()
+        except NoUpdates as e:
+            self.logger.info(e)
+        except RepoIsBusy as e:
+            self.logger.info(e)
+        except Exception as err:
+            self.logger.error('Ошибка при получении информации об обновлении')
+            if self.debug:
+                self.logger.exception(err)
+        else:
+            # self.checked = True
+            self.activate_interface()
+            self.refresh_gui()
+
+    def do_update(self):
+        try:
+            self.deactivate_interface()
+            self.manager.start_update()
         except Exception as err:
             self.logger.error(err)
             self.refresh_gui()
         else:
             self.logger.info('Обновление завершено\n')
-            # self.logger.info(100 * '-')
             self.refresh_gui()
         finally:
-            self.manager.deactivate()
-            self._activate_interface()
+            self.activate_interface()
 
     def log_append(self, message, level=None):
         """"""
@@ -276,25 +296,19 @@ class MainFrame(fmMain):
         self.wxLogView.AppendText(message)
 
     def update_packet_list_view(self):
-        act_list = {
-            UPD: (self.wxPackList.SetItemBackgroundColour, PCK_UPD),
-            NON: (self.wxPackList.SetItemForegroundColour, wx.BLACK),
-            NEW: (self.wxPackList.SetItemBackgroundColour, PCK_NEW),
-            DEL: (self.wxPackList.SetItemBackgroundColour, PCK_ABD),
-        }
-
         try:
             self.wxPackList.Freeze()
             self.wxPackList.Clear()
 
-            for pack_name in sorted(self.pack_list.keys()):
-                pack_data = self.pack_list[pack_name]
+            for pack_name in sorted(self.manager.pack_list.keys()):
+                pack_data = self.manager.pack_list[pack_name]
                 idx = self.wxPackList.Count
                 self.wxPackList.Append([pack_name])
-                st = pack_data.installed
                 self.wxPackList.Check(idx, pack_data.installed)
-                func, flag = act_list[pack_data.status]
+                func, flag = self.pack_action_list[pack_data.status]
                 func(idx, flag)
+                if pack_data.status == PackStatus.DEL and not pack_data.installed:
+                    self.wxPackList.SetItemForegroundColour(idx, PCK_DEL)
         except Exception as err:
             self.logger.exception(err)
         finally:
@@ -306,8 +320,7 @@ class MainFrame(fmMain):
         info.Freeze()
         info.DeleteAllItems()
 
-        data = self.manager.get_info(self.checked)
-        for k, v in data.items():
+        for k, v in self.manager.info_list.items():
             info.AppendItem([k, '-' if v is None else str(v)])
 
         self.wxInfo.Thaw()
@@ -315,41 +328,12 @@ class MainFrame(fmMain):
     def get_selected_packages(self):
         return self.wxPackList.GetCheckedStrings()
 
-    def get_pack_list(self, remote_index=None) -> PackList:
-        pack_list = PackList()
-        local_index_packs_cache = self.manager.get_local_index_packages()
-        installed_packs = self.manager.get_installed_packages()
-
-        # заполняем данными из индекс-кэша
-        for origin_pack_name in local_index_packs_cache:
-            alias_pack_name = local_index_packs_cache[origin_pack_name].get('alias') or origin_pack_name
-            pack_list[alias_pack_name] = PackData(
-                origin=origin_pack_name,
-                installed=False,
-                status=NON,
-            )
-
-        # обновляем статус установки имеющихся пакетов
-        for origin_pack_name in installed_packs:
-            _, pack_data = pack_list.get_by_origin(origin_pack_name)
-            if pack_data:
-                setattr(pack_data, 'installed', True)
-            else:
-                pack_list[origin_pack_name] = PackData(
-                    origin=origin_pack_name,
-                    installed=True,
-                    status=DEL,
-                )
-        if remote_index:  #
-            pass
-        return pack_list
-
 
 class ConfigFrame(fmConfig):
     """"""
     def __init__(self, mframe: MainFrame, *args, **kwargs):
         super(ConfigFrame, self).__init__(*args, **kwargs)
-        self.config = mframe.config
+        self.config = mframe.manager.config
         self.mframe = mframe
         self.config_hash = hash_calc(self.config)
         # fix eiis install path states
@@ -436,3 +420,38 @@ class ConfigFrame(fmConfig):
 
     def Cancel(self, event):
         self.Destroy()
+
+
+def get_logger(func_log_out, debug=False, logfile=False):
+    logger = logging.getLogger(__name__)
+    level = logging.INFO
+    formatter = logging.Formatter('%(message)s')
+    if debug:
+        level = logging.DEBUG
+        formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+    if logfile:
+        logfile = os.path.join(WORK_DIR, 'messages.log')
+        log_handler = RotatingFileHandler(logfile, maxBytes=1024 * 1024, encoding=DEFAULT_ENCODING)
+        logger.addHandler(log_handler)
+    logger.setLevel(level)
+    handler = WxLogHandler(func_log_out)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logger
+
+
+class WxLogHandler(logging.StreamHandler):
+    def __init__(self, func_log_out=None):
+        super(WxLogHandler, self).__init__()
+        self.func_log_out = func_log_out
+        self.level = logging.DEBUG
+
+    def emit(self, record):
+        try:
+            msg = ('{}\n'.format(self.format(record)), record.levelname)
+            wx.CallAfter(self.func_log_out, *msg)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception:
+            self.handleError(record)
+
