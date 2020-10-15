@@ -1,5 +1,5 @@
 import sys
-from collections import MutableMapping
+from collections import MutableMapping, namedtuple
 
 # pack status
 from enum import Enum
@@ -11,13 +11,15 @@ DEL = 2  # будет удален
 NEW = 3  # новый, будет установлен
 
 
+Task = namedtuple('Task', ('packetname action src dst hash'))
 
-class Action(Enum):
-    """
-    Тип действия над пакетом
-    """
-    # install, update, delete = range(3)
-    delete, update = range(2)
+
+# class Action(Enum):
+#     """
+#     Тип действия над пакетом
+#     """
+#     # install, update, delete = range(3)
+#     delete, update = range(2)
 
 
 class Status(Enum):
@@ -27,7 +29,10 @@ class Status(Enum):
     installed, removed, purged = range(3)
 
 
-class PackStatus(Enum):
+class State(Enum):
+    """
+    Статус состояния пакета, файла для обработки
+    """
     NON = 0  # нет изменений
     UPD = 1  # есть обновления, будет обновлен
     DEL = 2  # будет удален
@@ -41,7 +46,7 @@ if sys.version_info >= (3, 7):
 else:
     class PackData:
         def __init__(self, origin: str = None, installed: bool = False, checked: bool = False,
-                     status: int = PackStatus.NON):
+                     status: int = State.NON):
             self.origin = origin
             self.installed = installed
             self.checked = checked
@@ -89,24 +94,15 @@ class PackList(MutableMapping):
         self._store.clear()
         self._origin.clear()
 
-
-
     def get_action(self, pack):
         val = self._store[pack]
-        if val.checked and (val.status == PackStatus.UPD or val.status == PackStatus.NEW):
-            return PackStatus.UPD
-        elif not val.checked and (val.status == PackStatus.DEL):
-            return PackStatus.DEL
-        return PackStatus.NON
-
-    # def toggle_checked(self, pack: str, checked: bool):
-    #     v = self._store[pack]
-    #     if checked and not v.checked:
-    #         v.checked = True
-    #         v.status = PackStatus.NEW
-    #     elif not checked and v.checked:
-    #         v.checked = False
-    #         v.status = PackStatus.DEL
+        if val.checked and val.installed and (val.status == State.UPD or val.status == State.NEW):
+            return State.UPD
+        elif val.checked and not val.installed:
+            return State.NEW
+        elif not val.checked and val.installed:
+            return State.DEL
+        return State.NON
 
 
 class ConfigDict(dict):
