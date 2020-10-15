@@ -12,7 +12,7 @@ import wx.dataview as dv
 from eiisclient import (__version__, __email__, __division__, __author__,
                         PROFILE_INSTALL_PATH, DEFAULT_INSTALL_PATH,
                         WORK_DIR, CONFIG_FILE_NAME, DEFAULT_ENCODING)
-from eiisclient.structures import PackStatus
+from eiisclient.structures import State
 from eiisclient.exceptions import (DispatcherActivationError, PacketDeleteError, RepoIsBusy, NoUpdates)
 from eiisclient.manage import Manager
 from eiisclient.utils import hash_calc, to_json
@@ -35,10 +35,10 @@ class MainFrame(fmMain):
 
         self.checked = False
         self.pack_action_list = {
-            PackStatus.UPD: (self.wxPackList.SetItemBackgroundColour, PCK_UPD),
-            PackStatus.NON: (self.wxPackList.SetItemForegroundColour, wx.BLACK),
-            PackStatus.NEW: (self.wxPackList.SetItemBackgroundColour, PCK_NEW),
-            PackStatus.DEL: (self.wxPackList.SetItemBackgroundColour, PCK_ABD),
+            State.UPD: (self.wxPackList.SetItemBackgroundColour, PCK_UPD),
+            State.NON: (self.wxPackList.SetItemForegroundColour, wx.BLACK),
+            State.NEW: (self.wxPackList.SetItemBackgroundColour, PCK_NEW),
+            State.DEL: (self.wxPackList.SetItemBackgroundColour, PCK_ABD),
         }
 
         # инициализация интерфейса
@@ -120,8 +120,13 @@ class MainFrame(fmMain):
         thread.setDaemon(True)
         thread.setName('Manager')
         thread.start()
+    #
+    # def on_refresh(self, event):
+    #     self.refresh_gui()
 
-    def on_refresh(self, event):
+    def on_reset(self, event):
+        self.manager.reset()
+        self.btUpdate.Disable()
         self.refresh_gui()
 
     def on_btFull(self, event):
@@ -189,20 +194,24 @@ class MainFrame(fmMain):
 
     def _pack_list_toggle_item(self, item_id):
         pack_name = self.wxPackList.GetString(item_id)
+        pack_data = self.manager.pack_list[pack_name]
         # пакет невозможно установить - нет в репозитории
-        if self.manager.pack_list[pack_name].status == PackStatus.DEL:
+        if pack_data.installed and pack_data.status == State.DEL:
+            setattr(pack_data, 'checked', False)
             self.wxPackList.Check(item_id, False)
             self.wxPackList.SetItemForegroundColour(item_id, PCK_DEL)
             return
-        installed = self.manager.pack_list[pack_name].installed
         if self.wxPackList.IsChecked(item_id):
-            if installed:
+            setattr(pack_data, 'checked', True)
+            if pack_data.installed:
                 self.wxPackList.SetItemForegroundColour(item_id, wx.BLACK)
             else:
+                setattr(pack_data, 'status', State.NEW)
                 self.wxPackList.SetItemForegroundColour(item_id, PCK_INS)
         else:
-
-            if installed:
+            setattr(pack_data, 'checked', False)
+            if pack_data.installed:
+                setattr(pack_data, 'status', State.DEL)
                 self.wxPackList.SetItemForegroundColour(item_id, PCK_DEL)
             else:
                 self.wxPackList.SetItemForegroundColour(item_id, wx.BLACK)
@@ -265,7 +274,7 @@ class MainFrame(fmMain):
             if self.debug:
                 self.logger.exception(err)
         else:
-            # self.checked = True
+            self.checked = True
             self.activate_interface()
             self.refresh_gui()
 
@@ -304,10 +313,10 @@ class MainFrame(fmMain):
                 pack_data = self.manager.pack_list[pack_name]
                 idx = self.wxPackList.Count
                 self.wxPackList.Append([pack_name])
-                self.wxPackList.Check(idx, pack_data.installed)
+                self.wxPackList.Check(idx, pack_data.checked)
                 func, flag = self.pack_action_list[pack_data.status]
                 func(idx, flag)
-                if pack_data.status == PackStatus.DEL and not pack_data.installed:
+                if pack_data.status == State.DEL and not pack_data.checked:
                     self.wxPackList.SetItemForegroundColour(idx, PCK_DEL)
         except Exception as err:
             self.logger.exception(err)
