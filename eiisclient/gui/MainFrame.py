@@ -213,7 +213,7 @@ class fmMain ( wx.Frame ):
         self.wxPackList.Bind( wx.EVT_CHECKLISTBOX, self.on_pack_list_item_toggled )
         self.wxPackList.Bind( wx.EVT_ENTER_WINDOW, self.on_pack_list_enter )
         self.wxPackList.Bind( wx.EVT_LEAVE_WINDOW, self.on_pack_list_leave )
-        self.btRefresh.Bind( wx.EVT_BUTTON, self.on_refresh )
+        self.btRefresh.Bind( wx.EVT_BUTTON, self.on_reset )
         self.wxInfo.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_view_info )
         self.wxLogView.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_log_info )
         self.btCheck.Bind( wx.EVT_BUTTON, self.on_check )
@@ -247,7 +247,7 @@ class fmMain ( wx.Frame ):
     def on_pack_list_leave( self, event ):
         pass
 
-    def on_refresh( self, event ):
+    def on_reset( self, event ):
         pass
 
     def on_enter_view_info( self, event ):

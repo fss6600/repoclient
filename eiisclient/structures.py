@@ -3,6 +3,7 @@ from collections import MutableMapping
 
 # pack status
 from enum import Enum
+from typing import Iterator
 
 NON = 0  # нет изменений
 UPD = 1  # есть обновления, будет обновлен
@@ -15,7 +16,8 @@ class Action(Enum):
     """
     Тип действия над пакетом
     """
-    install, update, delete = range(3)
+    # install, update, delete = range(3)
+    delete, update = range(2)
 
 
 class Status(Enum):
@@ -35,55 +37,76 @@ class PackStatus(Enum):
 if sys.version_info >= (3, 7):
     """Класс для представления данных пакета в списке"""
     from dataclasses import make_dataclass
-    PackData = make_dataclass('PackData', [('origin', str), ('installed', bool), ('status', int)])
+    PackData = make_dataclass('PackData', [('origin', str), ('installed', bool), ('checked', bool), ('status', int)])
 else:
     class PackData:
-        def __init__(self, origin: str = None, installed: bool = False, status: int = PackStatus.NON):
+        def __init__(self, origin: str = None, installed: bool = False, checked: bool = False,
+                     status: int = PackStatus.NON):
             self.origin = origin
             self.installed = installed
+            self.checked = checked
             self.status = status
 
 
 class PackList(MutableMapping):
-    """Класс для представления списка пакетов для отображения в панели пакетов"""
+    """Класс для представления списка пакетов со статусом"""
     def __init__(self):
-        self.store = dict()
-        self.origin = dict()
+        self._store = dict()
+        self._origin = dict()
 
     def __getitem__(self, key):
-        return self.store[key]
+        return self._store[key]
 
     def __setitem__(self, key, value):
-        self.store[key] = value
-        self.origin[value.origin] = key
+        self._store[key] = value
+        self._origin[value.origin] = key
 
     def __delitem__(self, key):
-        obj = self.store.get(key)
+        obj = self._store.get(key)
         if obj:
             k = getattr(obj, 'origin')
             if k:
                 try:
-                    del self.origin[k]
+                    del self._origin[k]
                 except:
                     pass
-        del self.store[key]
+        del self._store[key]
 
     def __iter__(self):
-        return iter(self.store)
+        return iter(self._store)
 
     def __len__(self):
-        return len(self.store)
+        return len(self._store)
 
     def get_by_origin(self, key) -> (str, PackData):
-        k = self.origin.get(key)
+        k = self._origin.get(key)
         if k is None:
             return None, None
-        val = self.store.get(k)
+        val = self._store.get(k)
         return k, val
 
     def clear(self) -> None:
-        self.store.clear()
-        self.origin.clear()
+        self._store.clear()
+        self._origin.clear()
+
+
+
+    def get_action(self, pack):
+        val = self._store[pack]
+        if val.checked and (val.status == PackStatus.UPD or val.status == PackStatus.NEW):
+            return PackStatus.UPD
+        elif not val.checked and (val.status == PackStatus.DEL):
+            return PackStatus.DEL
+        return PackStatus.NON
+
+    # def toggle_checked(self, pack: str, checked: bool):
+    #     v = self._store[pack]
+    #     if checked and not v.checked:
+    #         v.checked = True
+    #         v.status = PackStatus.NEW
+    #     elif not checked and v.checked:
+    #         v.checked = False
+    #         v.status = PackStatus.DEL
 
 
 class ConfigDict(dict):
