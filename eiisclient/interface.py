@@ -11,7 +11,7 @@ import wx.dataview as dv
 
 from eiisclient import (__version__, __email__, __division__, __author__,
                         PROFILE_INSTALL_PATH, DEFAULT_INSTALL_PATH,
-                        WORK_DIR, DEFAULT_ENCODING)
+                        WORK_DIR, DEFAULT_ENCODING, CONFIGFILE)
 from eiisclient.structures import State
 from eiisclient.exceptions import (DispatcherActivationError, PacketDeleteError, RepoIsBusy, NoUpdates)
 from eiisclient.manage import Manager
@@ -268,6 +268,7 @@ class MainFrame(fmMain):
             self.deactivate_interface()
             self.manager.check_updates()
         except NoUpdates as e:
+            self.checked = True
             self.logger.info(e)
         except RepoIsBusy as e:
             self.logger.info(e)
@@ -419,8 +420,8 @@ class ConfigFrame(fmConfig):
 
                 # full = True  # флаг смены пути для менеджера
 
-            confile = os.path.join(WORK_DIR, CONFIG_FILE_NAME)
-            with open(confile, 'w', encoding=DEFAULT_ENCODING) as fp:
+            # confile = os.path.join(WORK_DIR, CONFIG_FILE_NAME)
+            with open(CONFIGFILE, 'w', encoding=DEFAULT_ENCODING) as fp:
                 fp.write(jsonify(self.config))
 
             # self.mframe.init_manager(full)  # set new manager
