@@ -82,8 +82,8 @@ class Manager:
         self._info_list = self._get_info_list(False)  # dict - информация о репозитории, установленных пакетах,..
         self._desktop = winshell.desktop()
         self._finalize = weakref.finalize(self, self._clean)
-        self._disp = None
-        self._full = False
+        self._disp = None # type: BaseDispatcher
+        self._full = False # type: bool
 
         if self.logger.level == logging.DEBUG:
             self.debug = True
@@ -126,11 +126,11 @@ class Manager:
             if self._disp.repo_is_busy():
                 raise RepoIsBusy
 
-            if not self.repo_updated:
-                raise NoUpdates
-
             self._pack_list = self._get_pack_list(remote=True)
             self._info_list = self._get_info_list(remote=True)
+
+            if not self.repo_updated:
+                raise NoUpdates
 
         finally:
             self.logger.debug('check_updates: деактивация диспетчера')
@@ -195,6 +195,13 @@ class Manager:
             # with open(self.local_index_file, 'w') as fp_index, open(self.local_index_file_hash, 'w') as fp_hash:
             #     fp_index.write(jsonify(self.remote_index))
             #     fp_hash.write(self.remote_index_hash)
+            try:
+                self._disp.write(self._local_index_file_hash, self._disp.remote_index_hash())
+                self._disp.write(self._local_index_file, jsonify(self._disp.remote_index()))
+            except Exception as err:
+                self.logger.error('Ошибка фиксации данных индекса репозитория: {}'.format(err))
+                if self.debug:
+                    self.logger.exception(err)
         finally:
             self._dispatcher_stop()
 
