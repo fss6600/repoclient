@@ -1,19 +1,18 @@
 # -*- coding: utf-8 -*-
-import gzip
 import hashlib
 import json
 import os
 import stat
 import time
-from argparse import ArgumentParser
-from tempfile import TemporaryDirectory
+
+
 
 from eiisclient import DEFAULT_ENCODING
 
-TIMETOSLEEP = 0.1
+SLEEP = 0.1
 
 
-def to_json(data):
+def jsonify(data):
     """Форматирование данных в json формат
 
     :param data: dict
@@ -22,7 +21,7 @@ def to_json(data):
     return json.JSONEncoder(ensure_ascii=False, indent=4).encode(data)
 
 
-def from_json(data):
+def unjsonify(data):
     """Преобразование данных из json
 
     :param data: JSON-format
@@ -31,18 +30,9 @@ def from_json(data):
     return json.JSONDecoder().decode(data)
 
 
-def gzip_read(gzfile, encode=DEFAULT_ENCODING):  # pragma: no cover
-    """Чтение данных из gzip архива"""
-    with gzip.open(gzfile, mode='rt', encoding=encode) as gf:
-        return gf.read()
-
-
-def get_temp_dir(prefix=''):  # pragma: no cover
-    return TemporaryDirectory(prefix=prefix, dir=os.path.expandvars('%TEMP%'))
-
-
 def file_hash_calc(fpath):  # pragma: no cover
-    """ Вычисление SHA1 контрольной суммы файлового объекта
+    """
+    Вычисление SHA1 контрольной суммы файлового объекта
 
     :param fpath путь к файлу
     :return string hexdigest
@@ -60,41 +50,34 @@ def file_hash_calc(fpath):  # pragma: no cover
         return sha1.hexdigest()
 
 
-def hash_calc(data):  # pragma: no cover
+def hash_calc(data: object) -> str:  # pragma: no cover
+    """
+    Возвращает хэш-сумму объекта данных
+
+    :param data: объект данных
+    :return: хэш сумма объекта
+    """
     sha1 = hashlib.sha1()
-    sha1.update(to_json(data).encode(DEFAULT_ENCODING))
+    sha1.update(jsonify(data).encode(DEFAULT_ENCODING))
     return sha1.hexdigest()
 
 
-def get_config_data(workdir, encode=DEFAULT_ENCODING):
-    cfile = os.path.join(workdir, 'config.json')
-    try:
-        with open(cfile, encoding=encode) as fp:
-            config = from_json(fp.read())
-    except FileNotFoundError:
-        config = {}
-
-    return config
-
-
-def chwmod(fpath, sleep=TIMETOSLEEP):
+def change_write_mod(fp, sleep=SLEEP):
     """Установка прав записи на файл владельцу"""
-    if not os.access(fpath, os.W_OK):
-        os.chmod(fpath, stat.S_IWUSR)
+    if not os.access(fp, os.W_OK):
+        os.chmod(fp, stat.S_IWUSR)
         time.sleep(sleep)
 
 
-def get_args():
-    """"""
-    parser = ArgumentParser(prog='eiisclient.exe')
-    parser.add_argument("-d", "--debug", dest='debug', action="store_true",
-                        default=None, help="включить режим отладки")
-    parser.add_argument("-l", "--log", dest='logfile', action="store_true",
-                        default=None, help="записывать сообщения в рабочей директории")
+def read_file(file_path: str, encoding=DEFAULT_ENCODING):
+    """
+    Чтение содержимого файла
 
+    :param file_path: полный путь к файлу
+    :return: str or None
+    """
     try:
-        args = parser.parse_args()
-    except Exception:
-        raise SystemExit(parser.format_usage())
-    else:
-        return args
+        with open(file_path, encoding=encoding) as fp:
+            return fp.read()
+    except FileNotFoundError:
+        return None

@@ -364,16 +364,6 @@ class fmConfig ( wx.Frame ):
 
         fgSizer1.Add( self.wxThreadsCount, 0, wx.ALL, 5 )
 
-        self.m_staticText6 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"При удалении пакета удалять файлы с диска:", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.m_staticText6.Wrap( -1 )
-
-        fgSizer1.Add( self.m_staticText6, 0, wx.ALL, 5 )
-
-        self.wxPurgePackets = wx.CheckBox( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.wxPurgePackets.SetToolTip( u"Для сокращения объема закачиваемых файлов из репозитория можно оставлять локально файлы подсистем, при деактивации пакетов подсистем. В дальнейшем будут скачиваться только новые файлы." )
-
-        fgSizer1.Add( self.wxPurgePackets, 0, wx.ALL, 5 )
-
         self.m_staticText10 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Обновлять все ярлыки после обновления:", wx.DefaultPosition, wx.DefaultSize, 0 )
         self.m_staticText10.Wrap( -1 )
 

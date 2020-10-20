@@ -1,32 +1,16 @@
 import sys
 from collections import MutableMapping, namedtuple
 
-# pack status
 from enum import Enum
-from typing import Iterator
 
-NON = 0  # нет изменений
-UPD = 1  # есть обновления, будет обновлен
-DEL = 2  # будет удален
-NEW = 3  # новый, будет установлен
+# # pack status
+# NON = 0  # нет изменений
+# UPD = 1  # есть обновления, будет обновлен
+# DEL = 2  # будет удален
+# NEW = 3  # новый, будет установлен
 
 
 Task = namedtuple('Task', ('packetname action src dst hash'))
-
-
-# class Action(Enum):
-#     """
-#     Тип действия над пакетом
-#     """
-#     # install, update, delete = range(3)
-#     delete, update = range(2)
-
-
-class Status(Enum):
-    """
-    Статус пакета на ПК пользователя
-    """
-    installed, removed, purged = range(3)
 
 
 class State(Enum):
