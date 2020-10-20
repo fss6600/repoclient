@@ -75,7 +75,7 @@ class Manager:
         self._local_index_file = os.path.join(WORK_DIR, 'index.json')
         self._local_index_file_hash = '{}.sha1'.format(self._local_index_file)
         self._eiispath = PROFILE_INSTALL_PATH if self.config.install_to_profile else DEFAULT_INSTALL_PATH
-        self._tempdir = TemporaryDirectory(prefix='tmp_mngr_', dir=os.path.expandvars('%TEMP%'))
+        self._tempdir = self._get_temp_dir()
         self._buffer = os.path.join(WORK_DIR, 'buffer')
         self._task_queue_k = kwargs.get('kqueue', 2)  # коэффициент размера основной очереди загрузки
         self._pack_list = self._get_pack_list(False)  # dict - перечень пакетов со статусами
@@ -118,10 +118,10 @@ class Manager:
         return self._info_list
 
     def check_updates(self):
-        # todo добавить в диспетчер контекстный вызов (with)
         self.logger.info('Чтение данных репозитория\n')
         try:
             self.logger.debug('check_updates: активация диспетчера')
+            self._tempdir = self._get_temp_dir()
             self._dispatcher_run()
             if self._disp.repo_is_busy():
                 raise RepoIsBusy
@@ -306,7 +306,7 @@ class Manager:
 
     def get_remote_index(self) -> dict:
         try:
-            return self._disp.get_index_data()
+            return self._disp.remote_index()
         except FileNotFoundError:
             self.logger.error('Не найден индекс-файл в репозитории')
             raise NoIndexFileOnServerError
@@ -316,7 +316,7 @@ class Manager:
     #     return self.get_remote_index().get('packages', {})
 
     def get_remote_index_hash(self) -> str:
-        return self._disp.get_index_hash()
+        return self._disp.remote_index_hash()
 
     def get_remote_index_create_date(self):
         return self._disp.index_create_date
@@ -622,7 +622,7 @@ class Manager:
     # +
     def _clean_buffer(self) -> bool:
         try:
-            self._disp.remove_dir(self._buffer)
+            self._disp.rmdir(self._buffer)
         except Exception as err:
             self.logger.error('Ошибка учистки буфера')
             if self.debug:
@@ -709,6 +709,12 @@ class Manager:
         self.logger.debug('move_package: перенос пакета {} -> {}'.format(src, dst))
         self._copy_package(src, dst)  # TODO Диспетчером!
         self._remove_dir(src)  # TODO Диспетчером!
+
+    def _get_temp_dir(self):
+        tmpdir = getattr(self, '_tempdir', None)
+        if tmpdir:
+            self._tempdir.cleanup()
+        return TemporaryDirectory(prefix='tmp_mngr_', dir=os.path.expandvars('%TEMP%'))
 
 # +
 class Worker(threading.Thread):
