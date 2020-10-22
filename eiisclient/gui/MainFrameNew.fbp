@@ -600,7 +600,7 @@
                                                     <object class="wxDataViewListCtrl" expanded="0">
                                                         <property name="bg"></property>
                                                         <property name="context_help"></property>
-                                                        <property name="context_menu">0</property>
+                                                        <property name="context_menu">1</property>
                                                         <property name="enabled">1</property>
                                                         <property name="fg"></property>
                                                         <property name="font">,90,90,10,70,0</property>
@@ -618,6 +618,7 @@
                                                         <property name="window_extra_style"></property>
                                                         <property name="window_name"></property>
                                                         <property name="window_style">wxNO_FULL_REPAINT_ON_RESIZE</property>
+                                                        <event name="OnDataViewListCtrlItemActivated">on_exinfo_item_activated</event>
                                                         <event name="OnEnterWindow">on_enter_view_info</event>
                                                     </object>
                                                 </object>

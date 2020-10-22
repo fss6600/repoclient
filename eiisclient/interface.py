@@ -13,7 +13,7 @@ from eiisclient import (__version__, __email__, __division__, __author__,
                         PROFILE_INSTALL_PATH, DEFAULT_INSTALL_PATH,
                         WORK_DIR, DEFAULT_ENCODING, CONFIGFILE)
 from eiisclient.structures import State
-from eiisclient.exceptions import (DispatcherActivationError, PacketDeleteError, RepoIsBusy, NoUpdates)
+from eiisclient.exceptions import (DispatcherActivationError, PacketDeleteError, RepoIsBusy, NoUpdates, IndexFixError)
 from eiisclient.manage import Manager
 from eiisclient.utils import hash_calc, jsonify
 from eiisclient.gui.MainFrame import fmMain, fmConfig
@@ -29,7 +29,7 @@ PCK_DEL = wx.RED  # пакет помечен на удаление
 class MainFrame(fmMain):
     def __init__(self, args):
         self.logger = get_logger(self.log_append, debug=args.debug, logfile=args.logfile)
-        self.debug = args.debug
+        self.debug = args.debug  # type: bool
         self.logger.debug('Инициализация программы')
         super(MainFrame, self).__init__(None)
 
@@ -50,32 +50,30 @@ class MainFrame(fmMain):
         self.wxInfo.AppendColumn(col_01)
         self.wxInfo.AppendColumn(col_02)
 
-        self.wxStatusBar.SetFieldsCount(3, [100, 180])
+        self.wxStatusBar.SetFieldsCount(4, [100, 180, -1, 20])
         self.wxStatusBar.SetStatusText('Версия: {}'.format(__version__))
         self.wxStatusBar.SetStatusText('Обновление ЕИИС "Соцстрах"', 1)
 
-
-        # инициализация менеджера
         self.manager = Manager(logger=self.logger)
-        # self.pack_list = self.manager.get_pack_list()
-
         self.refresh_gui()
         self.Show()
 
-    # event functions
-    # def on_pack_list_item_activated( self, event ):
-    #     if self.wxPackList.IsItemChecked(event.Index):
-    #         self.wxPackList.CheckItem(event.Index, False)
-    #     else:
-    #         self.wxPackList.CheckItem(event.Index, True)
+    def on_check(self, event):
+        self.do_updates_check()
+
+    def on_update(self, event):
+        thread = threading.Thread(target=self.do_update)
+        thread.setDaemon(True)
+        thread.setName('Manager')
+        thread.start()
+
+    def on_exinfo_item_activated(self, event):
+        print(event.Selection, event.String)
 
     def on_pack_list_item_select( self, event ):
         pack_name = self.wxPackList.GetString(event.Selection)
         info = '{} [{}]'.format(pack_name, self.manager.pack_list[pack_name].origin)
         self.wxStatusBar.SetStatusText(info, 2)
-
-    # def on_pack_list_item_deselect( self, event ):
-    #     self.wxStatusBar.SetStatusText('', 2)
 
     def on_enter_log_info(self, event):
         self.wxLogView.SetFocus()
@@ -84,7 +82,6 @@ class MainFrame(fmMain):
         self.wxPackList.SetFocus()
 
     def on_pack_list_leave(self, event):
-        """"""
         self.wxStatusBar.SetStatusText('', 2)
         try:
             selected = self.wxPackList.GetSelections()[0]
@@ -112,18 +109,6 @@ class MainFrame(fmMain):
     def on_exit(self, event):
         self.Close(True)
 
-    def on_check(self, event):
-        self.do_updates_check()
-
-    def on_update(self, event):
-        thread = threading.Thread(target=self.do_update)
-        thread.setDaemon(True)
-        thread.setName('Manager')
-        thread.start()
-    #
-    # def on_refresh(self, event):
-    #     self.refresh_gui()
-
     def on_reset(self, event):
         self.manager.reset()
         self.btUpdate.Disable()
@@ -135,20 +120,6 @@ class MainFrame(fmMain):
         else:
             self.manager.set_full(False)
 
-    # def on_purge(self, event):
-    #     dlg = wx.MessageDialog(None, 'Вы уверены?',
-    #                            'Очистка удаленных пакетов', wx.YES_NO | wx.ICON_QUESTION)
-    #     ans = dlg.ShowModal()
-    #     if ans == wx.ID_YES:
-    #         self.logger.debug('Очистка от пакетов, помеченных как удаленные')
-    #         try:
-    #             self.manager.clean_removed()
-    #         except PacketDeleteError as err:
-    #             self.logger.error('Ошибка при очистке удаленных пакетов: {}'.format(err))
-    #         else:
-    #             self.logger.info('Очистка завершена')
-    #             self.refresh_gui()
-
     def on_menu_select_all(self, event):
         dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УСТАНОВИТЬ ВСЕ ПАКЕТЫ?',
                                'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
@@ -157,7 +128,6 @@ class MainFrame(fmMain):
             for i in range(self.wxPackList.Count):
                 self.wxPackList.Check(i)
                 self._pack_list_toggle_item(i)
-                # self.wxPackList.SetCheckedItems(range(self.wxPackList.Count))
             self.wxPackList.Thaw()
 
     def on_menu_unselect_all(self, event):
@@ -171,7 +141,7 @@ class MainFrame(fmMain):
             self.wxPackList.Thaw()
 
     def on_clean_buffer(self, event):
-        res = self.manager._clean_buffer()
+        res = self.manager.clean_buffer()
         if res:
             self.logger.info('Буфер очищен')
             self.refresh_gui()
@@ -255,15 +225,13 @@ class MainFrame(fmMain):
             self.update_info_view()
         except UnicodeDecodeError as err:
             self.logger.error('Ошибка кодировка: {}'.format(err))
-        # except DispatcherActivationError as err:
-        #     self.logger.error('Ошибка активации диспетчера: {}'.format(err))
         except Exception as err:
             self.logger.error('Ошибка: {}'.format(err))
             if self.debug:
                 self.logger.exception(err)
 
     def do_updates_check(self):
-        """Проверка наличия обновлений"""
+        """Процесс проверки наличия обновлений"""
         try:
             self.deactivate_interface()
             self.manager.check_updates()
@@ -272,10 +240,10 @@ class MainFrame(fmMain):
             self.logger.info(e)
         except RepoIsBusy as e:
             self.logger.info(e)
-        except Exception as err:
-            self.logger.error('Ошибка при получении информации об обновлении')
+        except Exception as e:
+            self.logger.error('Ошибка при получении информации об обновлении: {}'.format(e))
             if self.debug:
-                self.logger.exception(err)
+                self.logger.exception(e)
         else:
             self.checked = True
         finally:
@@ -283,18 +251,22 @@ class MainFrame(fmMain):
             self.refresh_gui()
 
     def do_update(self):
+        """Процесс обновления/установки/удаления пакетов"""
         try:
             self.deactivate_interface()
             self.manager.start_update()
-        except Exception as err:
-            self.logger.error(err)
+        except InterruptedError:
+            return
+        except Exception as e:
+            self.logger.error(e)
             if self.debug:
-                self.logger.exception(err)
-            self.refresh_gui()
+                self.logger.exception(e)
+            self.logger.info('Процесс завершен с ошибками\n')
         else:
-            # self.logger.info('Обновление завершено\n')
-            self.refresh_gui()
+            self.logger.info('Обновление завершено\n')
         finally:
+            self.manager.reset(remote=True)
+            self.refresh_gui()
             self.activate_interface()
 
     def log_append(self, message, level=None):
@@ -337,9 +309,6 @@ class MainFrame(fmMain):
 
         self.wxInfo.Thaw()
 
-    # def get_selected_packages(self):
-    #     return self.wxPackList.GetCheckedStrings()
-
 
 class ConfigFrame(fmConfig):
     """"""
@@ -348,10 +317,9 @@ class ConfigFrame(fmConfig):
         self.config = mframe.manager.config
         self.mframe = mframe
         self.config_hash = hash_calc(self.config)
-        # fix eiis install path states
+        # fixme eiis install path states
         self.install_to_profile = self.config.install_to_profile
         self.eiis_path = PROFILE_INSTALL_PATH if self.install_to_profile else DEFAULT_INSTALL_PATH
-
         self.wxRepoPath.Value = self.config.repopath or ''
         self.wxInstallToUserProfile.SetValue(self.config.install_to_profile)
         if self.config.install_to_profile:  # путь установки
@@ -387,10 +355,8 @@ class ConfigFrame(fmConfig):
 
         self.config.clear()
         self.config.repopath = self.wxRepoPath.GetValue()
-        # self.config.eiispath = self.wxEiisInstallPath.GetPath()
         self.config.install_to_profile = self.wxInstallToUserProfile.GetValue()
         self.config.threads = int(self.wxThreadsCount.Selection) + 1
-        # self.config.purge = self.wxPurgePackets.GetValue()
         self.config.encode = self.wxEncode.GetValue().upper()
         self.config.ftpencode = self.wxFTPEncode.GetValue().upper()
 
@@ -399,35 +365,31 @@ class ConfigFrame(fmConfig):
             # full = False
 
             if not self.config.install_to_profile == self.install_to_profile:
+                try:
+                    packages = os.listdir(self.eiis_path)
+                    if packages:
+                        dlg = wx.MessageDialog(None, 'Скопировать существующие подсистемы по новому пути?',
+                                               'Копирование пакетов', wx.YES_NO | wx.ICON_QUESTION)
 
-                packages = os.listdir(self.eiis_path)
-                if packages:
-                    dlg = wx.MessageDialog(None, 'Скопировать существующие подсистемы по новому пути?',
-                                           'Копирование пакетов', wx.YES_NO | wx.ICON_QUESTION)
-
-                    if dlg.ShowModal() == wx.ID_YES:
-                        new_eiis_path = PROFILE_INSTALL_PATH if self.config.install_to_profile else DEFAULT_INSTALL_PATH
-                        for package in packages:
-                            src = os.path.join(self.eiis_path, package)
-                            dst = os.path.join(new_eiis_path, package)
-                            try:
-                                self.mframe.manager._move_package(src, dst)
-                            except Exception as err:
-                                self.mframe.logger.warning('Не удалось переместить пакет {} в {}: {}'.format(
-                                    package, new_eiis_path, err))
-                                self.mframe.logger.warning(
-                                    'Не достаточно прав доступа или не закрыты файлы подсистемы')
-
-                # full = True  # флаг смены пути для менеджера
-
-            # confile = os.path.join(WORK_DIR, CONFIG_FILE_NAME)
+                        if dlg.ShowModal() == wx.ID_YES:
+                            new_eiis_path = PROFILE_INSTALL_PATH if self.config.install_to_profile else DEFAULT_INSTALL_PATH
+                            for package in packages:
+                                src = os.path.join(self.eiis_path, package)
+                                dst = os.path.join(new_eiis_path, package)
+                                try:
+                                    self.mframe.manager.move_package(src, dst)
+                                except Exception as err:
+                                    self.mframe.logger.warning('Не удалось переместить пакет {} в {}: {}'.format(
+                                        package, new_eiis_path, err))
+                                    self.mframe.logger.warning(
+                                        'Не достаточно прав доступа или не закрыты файлы подсистемы')
+                except FileNotFoundError as err:
+                    self.mframe.logger.debug(err)
             with open(CONFIGFILE, 'w', encoding=DEFAULT_ENCODING) as fp:
                 fp.write(jsonify(self.config))
-
-            # self.mframe.init_manager(full)  # set new manager
+            self.mframe.manager.update_info_list()
             self.mframe.refresh_gui()  # update gui
             self.mframe.logger.info('Настройки применены')
-            self.mframe.logger.info('-' * 100)
 
         self.Destroy()
 

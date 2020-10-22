@@ -1,25 +1,30 @@
 # Exceptions
 
-class RepoIsBusy(Exception):
+class BaseManagerError(Exception):
+    pass
+
+
+class RepoIsBusy(BaseManagerError):
     def __str__(self):
         return 'Репозиторий заблокирован для обновлеия. Попробуйте позднее.'
 
 
-class NoUpdates(Exception):
+class NoUpdates(BaseManagerError):
     def __str__(self):
         return 'Обновлений нет'
 
 
-class DispatcherNotActivated(Exception):
+class DispatcherNotActivated(BaseManagerError):
     def __str__(self):
         return 'Диспетчер не активирован'
 
 
-class DispatcherActivationError(Exception):
-    pass
+class DispatcherActivationError(BaseManagerError):
+    def __str__(self):
+        return 'Ошибка активации диспетчера'
 
 
-class PacketInstallError(Exception):
+class PacketInstallError(BaseManagerError):
     def __init__(self, message=''):
         self.message = message
 
@@ -27,22 +32,41 @@ class PacketInstallError(Exception):
         return 'Ошибка при установке пакетов: {}'.format(self.message)
 
 
-class CopyPackageError(Exception):
+class CopyPackageError(BaseManagerError):
     def __str__(self):
         return 'Ошибка при копировании пакетов'
 
 
-class PacketDeleteError(Exception):
+class PacketDeleteError(BaseManagerError):
     def __str__(self):
         return 'Ошибка при удалении пакетов'
 
 
-class DownloadPacketError(Exception):
+class DownloadPacketError(BaseManagerError):
     pass
 
 
-class LinkUpdateError(Exception):
+class HashMismatchError(BaseManagerError):
     pass
+
+
+class NoIndexFileOnServerError(BaseManagerError):
+    def __str__(self):
+        return 'Не найден индекс-файл в репозитории'
+
+
+class InstallPermissionError(BaseManagerError):
+    def __init__(self, message=None):
+        self.message = message or ''
+
+    def __str__(self):
+        msg = 'Недостаточно прав доступа для установки пакета подсистем'
+        return msg + ': {}'.format(self.message) if self.message else msg
+
+
+class LinkUpdateError(BaseManagerError):
+    def __str__(self):
+        return 'Ошибка обновления ярлыка'
 
 
 class LinkNoData(Exception):
@@ -53,15 +77,5 @@ class LinkDisabled(Exception):
     pass
 
 
-class NoIndexFileOnServer(Exception):
-    def __str__(self):
-        return 'Не найден индекс-файл в репозитории'
-
-
-class InstallPermissionError(Exception):
-    def __init__(self, message=None):
-        self.message = message or ''
-
-    def __str__(self):
-        msg = 'Недостаточно прав доступа для установки пакета подсистем'
-        return msg + ': {}'.format(self.message) if self.message else msg
+class IndexFixError(BaseManagerError):
+    pass

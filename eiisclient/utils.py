@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import gzip
 import hashlib
 import json
 import os
@@ -81,3 +82,15 @@ def read_file(file_path: str, encoding=DEFAULT_ENCODING):
             return fp.read()
     except FileNotFoundError:
         return None
+
+
+def gzread(path: str, encode=DEFAULT_ENCODING) -> str:
+    """
+    Чтение данных из gzip архива
+
+    :param path: полный путь к файлу
+    :param encode: кодировка файла
+    :return: json данные
+    """
+    with gzip.open(path, mode='rt', encoding=encode) as gf:
+        return gf.read()
