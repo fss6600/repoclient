@@ -174,9 +174,6 @@ class fmMain ( wx.Frame ):
         self.menuService.Append( self.menuConfig )
 
         self.m_menu1 = wx.Menu()
-        self.menuitemPurge = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Удалить подсистемы, помеченные как \"удаленные\"", u"Удаление неиспользуемых подсистем с компьютера", wx.ITEM_NORMAL )
-        self.m_menu1.Append( self.menuitemPurge )
-
         self.menuitemCleanBuffer = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Очистить буфер", u"Очистить буфер", wx.ITEM_NORMAL )
         self.m_menu1.Append( self.menuitemCleanBuffer )
 
@@ -224,7 +221,6 @@ class fmMain ( wx.Frame ):
         self.Bind( wx.EVT_MENU, self.on_menu_unselect_all, id = self.menuitem_unselect_all.GetId() )
         self.Bind( wx.EVT_MENU, self.on_exit, id = self.menuitemExit.GetId() )
         self.Bind( wx.EVT_MENU, self.on_config, id = self.menuConfig.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_purge, id = self.menuitemPurge.GetId() )
         self.Bind( wx.EVT_MENU, self.on_clean_buffer, id = self.menuitemCleanBuffer.GetId() )
         self.Bind( wx.EVT_MENU, self.on_links_update, id = self.menuitemLinksUpdate.GetId() )
         self.Bind( wx.EVT_MENU, self.on_btFull, id = self.btFull.GetId() )
@@ -277,9 +273,6 @@ class fmMain ( wx.Frame ):
         pass
 
     def on_config( self, event ):
-        pass
-
-    def on_purge( self, event ):
         pass
 
     def on_clean_buffer( self, event ):
@@ -377,16 +370,6 @@ class fmConfig ( wx.Frame ):
         self.wxFullLinksUpdate.SetToolTip( u"После процесса загрузки и обновления пакетов обновить ярлыки всех установленных подсистем" )
 
         fgSizer1.Add( self.wxFullLinksUpdate, 0, wx.ALL, 5 )
-
-        self.m_staticText7 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Кодировка", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.m_staticText7.Wrap( -1 )
-
-        fgSizer1.Add( self.m_staticText7, 0, wx.ALL, 5 )
-
-        self.wxEncode = wx.TextCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
-        self.wxEncode.SetToolTip( u"Кодировка симвлолв в файлах, используемых программой.\n\nПо-умолчанию UTF-8" )
-
-        fgSizer1.Add( self.wxEncode, 0, wx.ALL|wx.EXPAND, 5 )
 
         self.m_staticText8 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Кодировка FTP-сервера", wx.DefaultPosition, wx.DefaultSize, 0 )
         self.m_staticText8.Wrap( -1 )

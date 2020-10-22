@@ -110,7 +110,7 @@ class Manager:
         return self._info_list
 
     def check_updates(self):
-        self.logger.info('Чтение данных репозитория\n')
+        self.logger.info('Чтение данных репозитория')
         try:
             self.logger.debug('check_updates: активация диспетчера')
             self._tempdir = self._get_temp_dir()
@@ -359,7 +359,6 @@ class Manager:
     def local_index_hash(self) -> str:
         return read_file(LOCAL_INDEX_FILE_HASH)
 
-    # +
     def _get_pack_list(self, remote) -> PackList:
         pack_list = PackList()
         local_index_packs_cache = self.local_index_packages
@@ -426,7 +425,6 @@ class Manager:
 
         return pack_list
 
-    # +
     def get_task(self, pack_list) -> Iterator:
         """
         Формирование задачи для установки/обновления или удаления файлов пакета
@@ -521,7 +519,6 @@ class Manager:
                 else:
                     raise IndexError('Что-то пошло не так с индексами, при проходе списков файлов на обработку')
 
-    # +
     def _build_task(self, package, file, action, hash=None) -> (namedtuple, int):
         if action == State.DEL:
             src = os.path.join(self.eiispath, package, file)  # путь файла для удаления
@@ -532,10 +529,8 @@ class Manager:
         task = Task(package, action, src, dst, hash)
         return task, id(task)
 
-    # +
     def handle_tasks(self, tasks):
         """Получить новые файлы из репозитория или удалить локально старые"""
-        # main_queue = Queue(maxsize=self.config.threads * self._task_queue_k)
         main_queue = Queue(maxsize=QUEUEMAXSIZE)
         exc_queue = Queue()
         stopper = threading.Event()
@@ -559,37 +554,40 @@ class Manager:
             self.logger.debug('handle_tasks: worker {} запущен'.format(worker))
 
         self.logger.debug('handle_tasks: обработка очереди задач:')
-        # self.logger.info('Обработка файлов')
-        for task in tasks:
-            if stopper.is_set():  # worker дернул стоп-кран
+
+        try:
+            while True:
+                if stopper.is_set():  # worker дернул стоп-кран
+                    raise InterruptedError
+
+                if not main_queue.full():
+                    task = next(tasks)
+                    task_id = id(task)
+                    self.logger.debug('handle_tasks: получена задача <{}>'.format(task_id))
+                    main_queue.put(task)
+                    self.logger.debug('handle_tasks: задача <{}> помещена в очередь'.format(task_id))
+
+        except StopIteration:
+            self.logger.debug('все задачи помещены в очередь, ожидание окончания очереди')
+            main_queue.join()  # ожидаем окончания обработки очереди
+            self.logger.debug('проверка активности пчелок и ожидание завершения работы')
+            for worker in workers:
+                if worker.isAlive():
+                    worker.join()
+
+        # except InterruptedError:
+
+        finally:
+            if exc_queue.qsize():
+                self.logger.debug('выгрузка исключений из очереди')
+                for _ in range(exc_queue.qsize()):
+                    exc = exc_queue.get()  # type: Exception
+                    self.logger.error(exc)
                 raise InterruptedError
-            task_id = id(task)
-            self.logger.debug('handle_tasks: получена задача <{}>'.format(task_id))
-            main_queue.put(task)
-            self.logger.debug('handle_tasks: задача <{}> помещена в очередь'.format(task_id))
-
-        self.logger.debug('ожидание окончания очереди')
-        main_queue.join()  # ожидаем окончания обработки очереди
-        self.logger.debug('проверка активности пчелок и ожидание завершения работы')
-        for worker in workers:
-            if worker.isAlive():
-                worker.join()
-
-        if exc_queue.qsize():
-            # while True:
-            #     try:
-            #         exc = exc_queue.get()  # type: Exception
-            #         self.logger.error(exc)
-            #     except Queue.Empty:
-            #         break
-            #     finally:
-            raise InterruptedError
 
         self.logger.debug('handle_tasks: очередь обработана')
-
         # end up
 
-    # +
     def flush_buffer(self, packs: Iterable):
         """
         Перемещение пакетов из буфера в папку установки
@@ -600,8 +598,8 @@ class Manager:
         remote_packages = self.remote_index_packages
         for package in self.buffer_content():
             if package not in (data.origin for _, data in packs):  # пакет остался с прошлой неудачной установки
-                self.logger.warning('install_packets: {} есть в буфере, '
-                                 'но нет в списке устанавливаемых пакетов - пропуск'.format(package))
+                self.logger.warning('- `{}` есть в буфере, но нет в списке '
+                                    'устанавливаемых пакетов - пропуск'.format(package))
                 continue
 
             src = os.path.join(self._buffer, package)
@@ -657,7 +655,7 @@ class Manager:
                 lp.path = exe_file_path
                 lp.description = 'Запуск подсистемы "{}" ЕИИС Соцстрах РФ'.format(title)
                 lp.working_directory = workdir
-                lp.write_data()
+                lp.write()
                 self.logger.debug('создан ярлык: {}'.format(lnpath))
         except Exception as err:
             raise LinkUpdateError from err
@@ -674,15 +672,17 @@ class Manager:
     def _clean(self):
         self._tempdir.cleanup()
 
-    # +
     def clean_buffer(self) -> bool:
         try:
             rmtree(self._buffer)
+        except FileNotFoundError:
+            return True
         except Exception as err:
             self.logger.error('Ошибка учистки буфера')
             if self.debug:
                 self.logger.exception(err)
             return False
+        self.reset()
         return True
 
     def _get_link_data(self, packet) -> tuple:
@@ -711,7 +711,6 @@ class Manager:
         return TemporaryDirectory(prefix='tmp_mngr_', dir=os.path.expandvars('%TEMP%'))
 
 
-# +
 class Worker(threading.Thread):
     max_repeat = 3
 
@@ -732,16 +731,16 @@ class Worker(threading.Thread):
         try:
             while True:
                 if self.stopper.is_set():
-                    raise InterruptedError('Обнаружен стоп-флаг')
+                    self.logger.debug('worker {}: {}'.format(self, 'Обнаружен стоп-флаг'))
+                    return
 
                 if self.dispatcher.repo_is_busy():
-                    raise StopIteration('Репозиторий заблокирован')
-
-                try:
-                    task = self.queue.get(timeout=1)
-                except Empty:
-                    self.logger.debug('worker {}: очередь пустая, выхожу'.format(self))
+                    self.stopper.set()
+                    self.exc_queue.put(InterruptedError('Репозиторий заблокирован'))
                     return
+
+                task = self.queue.get(timeout=1)
+
                 # start real work
                 task_id = id(task)
                 self.logger.debug('worker {}: получена задача <{}>'.format(self, task_id))
@@ -783,17 +782,12 @@ class Worker(threading.Thread):
                 self.queue.task_done()
                 self.logger.debug('worker {}: задача <{}> выполнена'.format(self, task_id))
 
-        except InterruptedError as err:  # stopper is set
-            self.logger.debug('worker {}: {}'.format(self, err))
-            self.exc_queue.put(err)
-        except StopIteration as err:  # repo is blocked
-            self.logger.debug('worker {}: {}'.format(self, err))
-            self.logger.error(err)
-            self.stopper.set()
-            self.exc_queue.put(err)
+        except Empty:
+            self.logger.debug('worker {}: очередь пустая, выхожу'.format(self))
+            return
         except HashMismatchError as err:
-            self.logger.error('{}\nРасхождение контрольных сумм файла данных индекса.'
-                              'Требуется индексация репозитория.'.format(err.args[0]))
+            self.logger.error('Расхождение контрольных сумм файла данных индекса.'
+                              'Требуется индексация репозитория.')
             if self.logger.level == logging.DEBUG:
                 self.logger.exception(err)
             self.stopper.set()

@@ -6,7 +6,6 @@ import os
 import shutil
 import stat
 import time
-from pathlib import PurePath
 
 from eiisclient import DEFAULT_ENCODING
 

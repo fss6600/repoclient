@@ -24,6 +24,9 @@ PCK_UPD = wx.Colour(210, 250, 210, 0)  # обновленный пакет - е�
 PCK_ABD = wx.Colour(250, 220, 210, 0)  # исиротевший пакет (abandoned) - есть локально, нет в репозитории
 PCK_INS = wx.BLUE  # пакет помечен на установку
 PCK_DEL = wx.RED  # пакет помечен на удаление
+LOG_ERROR_CLR = wx.RED
+LOG_DEBUG_CLR = wx.BLUE
+LOG_WARNING_CLR = wx.Colour(204, 102, 0, 0)
 
 
 class MainFrame(fmMain):
@@ -66,9 +69,6 @@ class MainFrame(fmMain):
         thread.setDaemon(True)
         thread.setName('Manager')
         thread.start()
-
-    def on_exinfo_item_activated(self, event):
-        print(event.Selection, event.String)
 
     def on_pack_list_item_select( self, event ):
         pack_name = self.wxPackList.GetString(event.Selection)
@@ -144,10 +144,12 @@ class MainFrame(fmMain):
         res = self.manager.clean_buffer()
         if res:
             self.logger.info('Буфер очищен')
+            self.logger.info('--\n')
             self.refresh_gui()
 
     def on_links_update(self, event):
         self.manager.update_links()
+        self.logger.info('--\n')
 
     def on_help(self, event):
         import webbrowser
@@ -165,12 +167,6 @@ class MainFrame(fmMain):
     def _pack_list_toggle_item(self, item_id):
         pack_name = self.wxPackList.GetString(item_id)
         pack_data = self.manager.pack_list[pack_name]
-        # пакет невозможно установить - нет в репозитории
-        if pack_data.installed and pack_data.status == State.DEL:
-            setattr(pack_data, 'checked', False)
-            self.wxPackList.Check(item_id, False)
-            self.wxPackList.SetItemForegroundColour(item_id, PCK_DEL)
-            return
         if self.wxPackList.IsChecked(item_id):
             setattr(pack_data, 'checked', True)
             if pack_data.installed:
@@ -197,7 +193,6 @@ class MainFrame(fmMain):
         self.btRefresh.Enable()
         self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=True)
         self.menuService.Enable(id=self.menuConfig.GetId(), enable=True)
-        self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=True)
         self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=True)
         self.menuService.Enable(id=self.btFull.GetId(), enable=True)
         self.btFull.Check(False)
@@ -213,7 +208,6 @@ class MainFrame(fmMain):
         self.btRefresh.Disable()
         self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=False)
         self.menuService.Enable(id=self.menuConfig.GetId(), enable=False)
-        self.menuService.Enable(id=self.menuitemPurge.GetId(), enable=False)
         self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=False)
         self.menuService.Enable(id=self.btFull.GetId(), enable=False)
         #
@@ -239,7 +233,7 @@ class MainFrame(fmMain):
             self.checked = True
             self.logger.info(e)
         except RepoIsBusy as e:
-            self.logger.info(e)
+            self.logger.error(e)
         except Exception as e:
             self.logger.error('Ошибка при получении информации об обновлении: {}'.format(e))
             if self.debug:
@@ -249,6 +243,7 @@ class MainFrame(fmMain):
         finally:
             self.activate_interface()
             self.refresh_gui()
+            self.logger.info('--\n')
 
     def do_update(self):
         """Процесс обновления/установки/удаления пакетов"""
@@ -261,22 +256,23 @@ class MainFrame(fmMain):
             self.logger.error(e)
             if self.debug:
                 self.logger.exception(e)
-            self.logger.info('Процесс завершен с ошибками\n')
+            self.logger.info('Процесс завершен с ошибками')
         else:
-            self.logger.info('Обновление завершено\n')
+            self.logger.info('Обновление завершено')
         finally:
             self.manager.reset(remote=True)
             self.refresh_gui()
             self.activate_interface()
+            self.logger.info('--\n')
 
     def log_append(self, message, level=None):
         """"""
         if level == 'DEBUG':
-            color = wx.BLUE
+            color = LOG_DEBUG_CLR
         elif level == 'WARNING':
-            color = wx.GREEN
+            color = LOG_WARNING_CLR
         elif level == 'ERROR':
-            color = wx.RED
+            color = LOG_ERROR_CLR
         else:
             color = wx.NullColour
         self.wxLogView.SetDefaultStyle(wx.TextAttr(color))
@@ -331,10 +327,6 @@ class ConfigFrame(fmConfig):
         self.wxThreadsCount.Select(self.config.threads - 1)
         # self.wxPurgePackets.SetValue(self.config.purge)
         # значение кодировки файлов временно заблокировано до перехода на UTF-8
-        # self.wxEncode.SetValue(self.config.get('encode', 'UTF-8'))
-        self.wxEncode.SetValue(self.config.encode)
-        # self.wxEncode.SetValue('CP1251')
-        # self.wxEncode.Enable(False)
         self.wxFTPEncode.SetValue(self.config.ftpencode)
 
         self.sdApply.Label = 'Применить'
@@ -357,7 +349,6 @@ class ConfigFrame(fmConfig):
         self.config.repopath = self.wxRepoPath.GetValue()
         self.config.install_to_profile = self.wxInstallToUserProfile.GetValue()
         self.config.threads = int(self.wxThreadsCount.Selection) + 1
-        self.config.encode = self.wxEncode.GetValue().upper()
         self.config.ftpencode = self.wxFTPEncode.GetValue().upper()
 
         #  write_data to file if changed
