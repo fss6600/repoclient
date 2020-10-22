@@ -11,14 +11,10 @@ __division__ = 'филиал №2 ГУ СРО ФСС РФ'
 __license__ = 'BSD'
 
 
-DEFAULT_FTP_SERVER = 'ftp://10.66.2.131'  # todo remove
+DEFAULT_FTP_SERVER = 'ftp://10.66.2.131'  # todo _remove
 DEFAULT_ENCODING = 'UTF-8'
 DEFAULT_FTP_ENCODING = DEFAULT_ENCODING
 WORK_DIR = os.path.join(os.path.expandvars('%APPDATA%'), 'Обновление ЕИИС Соцстрах')
 DEFAULT_INSTALL_PATH = os.path.normpath(os.path.join(os.path.expandvars('%PROGRAMFILES%'), r'NIST\ЕИИС ФСС РФ'))
 PROFILE_INSTALL_PATH = os.path.normpath(os.path.join(os.path.expandvars('%APPDATA%'), 'ЕИИС ФСС РФ'))
-LOCAL_INDEX_FILE = os.path.normpath(os.path.join(WORK_DIR, 'index.json'))
-LOCAL_INDEX_FILE_HASH = '{}.sha1'.format(LOCAL_INDEX_FILE)
-INDEX_FILE_NAME = 'Index.gz'
-INDEX_HASH_FILE_NAME = 'Index.gz.sha1'
 CONFIGFILE = os.path.normpath(os.path.join(WORK_DIR, 'config.json'))

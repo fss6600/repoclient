@@ -13,9 +13,9 @@ from eiisclient import (__version__, __email__, __division__, __author__,
                         PROFILE_INSTALL_PATH, DEFAULT_INSTALL_PATH,
                         WORK_DIR, DEFAULT_ENCODING, CONFIGFILE)
 from eiisclient.structures import State
-from eiisclient.exceptions import (DispatcherActivationError, PacketDeleteError, RepoIsBusy, NoUpdates, IndexFixError)
-from eiisclient.manage import Manager
-from eiisclient.utils import hash_calc, jsonify
+from eiisclient.exceptions import RepoIsBusy, NoUpdates
+from eiisclient.manager import Manager
+from eiisclient.functions import hash_calc, jsonify
 from eiisclient.gui.MainFrame import fmMain, fmConfig
 
 # colors
@@ -360,7 +360,7 @@ class ConfigFrame(fmConfig):
         self.config.encode = self.wxEncode.GetValue().upper()
         self.config.ftpencode = self.wxFTPEncode.GetValue().upper()
 
-        #  write to file if changed
+        #  write_data to file if changed
         if not hash_calc(self.config) == self.config_hash:
             # full = False
 
@@ -387,7 +387,7 @@ class ConfigFrame(fmConfig):
                     self.mframe.logger.debug(err)
             with open(CONFIGFILE, 'w', encoding=DEFAULT_ENCODING) as fp:
                 fp.write(jsonify(self.config))
-            self.mframe.manager.update_info_list()
+            self.mframe.manager.reset()
             self.mframe.refresh_gui()  # update gui
             self.mframe.logger.info('Настройки применены')
 

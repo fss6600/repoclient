@@ -1,29 +1,20 @@
 # -*- coding: utf-8 -*-
 #
-import gzip
 import logging
 import os
 import re
 import shutil
-import stat
-import time
 import weakref
-from datetime import datetime
 import locale
-from collections import Iterator
 
 from eiisclient import DEFAULT_ENCODING
-from eiisclient.exceptions import DispatcherActivationError, NoIndexFileOnServerError, CopyPackageError
-from eiisclient.utils import change_write_mod, unjsonify, read_file
+from eiisclient.exceptions import DispatcherActivationError
 
 BUSYMESSAGE = '__REGLAMENT__'
 
 
 class BaseDispatcher(object):
     """"""
-    index_file_name = 'Index.gz'
-    index_hash_file_name = 'Index.gz.sha1'
-
     def __init__(self, *args, **kwargs):
         self._repo = None
         self._tempdir = kwargs.get('tempdir')
@@ -42,10 +33,6 @@ class BaseDispatcher(object):
     def repopath(self):
         return self._repo
 
-    @staticmethod
-    def read(file_path: str):
-        return read_file(file_path)
-
     def get_file(self, src: str, dst: str) -> str:
         """
         Загрузка файла из репозитория
@@ -56,135 +43,8 @@ class BaseDispatcher(object):
         raise NotImplementedError
 
     def repo_is_busy(self):
+        """"""
         raise NotImplementedError
-
-    def copytree(self, src: str, dst: str):
-        """
-        Копирование директории
-        :param src: полный путь директории-исходника
-        :param dst: полный путь директории-назначения
-        :return:
-        """
-        for top, _, files in os.walk(src, topdown=False):
-            for file in files:
-                s = os.path.join(top, file)
-                d = os.path.join(os.path.dirname(dst), os.path.relpath(s, os.path.dirname(src)))
-                try:
-                    self.logger.debug('[1] copy: {}  ->  {}'.format(s, d))
-                    dname = os.path.dirname(d)
-                    if not os.path.exists(dname):
-                        os.makedirs(dname, exist_ok=True)
-                    shutil.copyfile(s, d)
-                except PermissionError:
-                    try:
-                        self._onerror(os.remove, dst, None)
-                        shutil.copyfile(src, dst)
-                    except Exception as err:
-                        self.logger.debug('Chmod error: {}'.format(err))
-                        raise
-                    self.logger.debug('[2] copy: {}  ->  {}'.format(s, d))
-                    shutil.copyfile(s, d)
-                except Exception as err:
-                    raise
-
-    # def copy_file(self, src: str, dst: str, move=False):
-    #     """
-    #     Копирование/Перемещение файла
-    #
-    #     :param src: полный путь к файлу источника
-    #     :param dst: полный путь к файлу назначения
-    #     :param move: удалить файл после копирования
-    #     :return:
-    #     """
-    #     dirname = os.path.dirname(dst)
-    #     if not os.path.exists(dirname):
-    #         os.makedirs(dirname, exist_ok=True)
-    #
-    #     try:
-    #         shutil.copyfile(src, dst)
-    #     except PermissionError:
-    #         try:
-    #             self._onerror(os.remove, dst, None)
-    #             shutil.copyfile(src, dst)
-    #         except Exception as err:
-    #             raise IOError(err)
-    #     if move:
-    #         self.remove(src)
-
-    def remove(self, path: str, onerror=False):
-        """
-        Удаление локального файла
-
-        :param path: полный путь к файлу
-        :param onerror: True выбрасывает исключение, False замалчивает исключение
-        :return:
-        """
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
-        except PermissionError:
-            try:
-                self._onerror(os.remove, path, None)
-            except Exception as err:
-                self.logger.error('Ошибка удаления файла `{}`'.format(path))
-                if self.logger.level == logging.DEBUG:
-                    self.logger.exception(err)
-                if onerror:
-                    raise
-
-    def rmtree(self, path, ignore_errors=False):
-        shutil.rmtree(path, ignore_errors=ignore_errors, onerror=self._onerror)
-
-    # def packet_files(self, path: str) -> Iterator:
-    #     """
-    #     Генератор списка файлов в указанной папке
-    #
-    #     :path: полный путь к директории
-    #     :return: tuple(fpath, rpath)
-    #         fpath: полный путь к файлу
-    #         rpath: относительный путь файлу
-    #     """
-    #     for (root, _, filenames) in os.walk(path):
-    #         for fname in filenames:
-    #             fpath = os.path.join(root, fname)
-    #             rpath = os.path.relpath(fpath, path)
-    #             yield fpath, rpath
-
-    def rmdir(self, path: str):
-        """
-        Рекурсивное удаление директории
-
-        :param path: полный путь к директории
-        :return:
-        """
-        shutil.rmtree(path, onerror=self._onerror)
-
-    def write(self, path: str, data: str):
-        """
-        Запись данных в файл
-
-        :param path: полный путь к файлу
-        :param data: данные в текстовом виде
-        :return:
-        """
-        with open(path, 'w', encoding=self.encode) as fp:
-            fp.write(data)
-
-    # def remote_index_hash(self) -> str:
-    #     """
-    #     :return: Хэш-сумма индекса репозитория
-    #     """
-    #     pass
-    #
-    # def remote_index(self) -> dict:
-    #     """
-    #     :return: Данные индекса репозитория
-    #     """
-    #     pass
-
-    # def index_create_date(self) -> datetime:  # todo считывать из индекса::meta datastamp
-    #     pass
 
     def _init_log(self):
         self.logger.debug('{}: encode: {}'.format(self, self.encode))
@@ -194,24 +54,9 @@ class BaseDispatcher(object):
     def close(self):
         pass
 
-    @staticmethod
-    def _onerror(func, path, _):
-        """
-        Вспомогательная функция для смены прав доступа к файлу при удалении, изменении
-
-        :param func: объект функции для выполнения после смены прав
-        :param path: полный путь к файлу
-        :return:
-        """
-        os.chmod(path, stat.S_IWUSR)
-        os.chmod(path, stat.S_IWRITE)
-        time.sleep(0.3)
-        func(path)
-
 
 class FileDispatcher(BaseDispatcher):
-    """"""
-
+    """Local repo диспетчер"""
     def __init__(self, repo, *args, **kwargs):
         """"""
         super(FileDispatcher, self).__init__(*args, **kwargs)
@@ -233,20 +78,15 @@ class FileDispatcher(BaseDispatcher):
     def repo_is_busy(self):
         return BUSYMESSAGE in os.listdir(self.repopath)
 
-    # @property
-    # def index_create_date(self) -> datetime:  # todo убрать - использовать метод Manager'a
-    #     timestamp = os.path.getmtime(os.path.join(self.repopath, self.index_file_name))
-    #     return datetime.fromtimestamp(timestamp)
-
 
 class SMBDispatcher(FileDispatcher):
+    """SMB диспетчер"""
     def __repr__(self):
         return '<SMB Dispatcher-{}>'.format(id(self))
 
 
 class FTPDispatcher(BaseDispatcher):
     """FTP диспетчер"""
-
     def __init__(self, repo, *args, **kwargs):
         super(FTPDispatcher, self).__init__(*args, **kwargs)
 
@@ -259,7 +99,6 @@ class FTPDispatcher(BaseDispatcher):
         self._parse_url_data(repo)
         self.ftp = self._get_connection()
         self._finalizer = weakref.finalize(self, self.close)
-        self.index_file_path = os.path.join(self.repopath, self.index_file_name)
 
     def __repr__(self):
         return 'FTP Dispatcher  <{}> on <{}{}>'.format(id(self), self.hostname, self.repopath)
@@ -274,6 +113,7 @@ class FTPDispatcher(BaseDispatcher):
         self._repo = data.path or '/'
 
     def _get_connection(self):
+        """"""
         from ftplib import FTP
         ftp = FTP()
         ftp.encoding = self.ftpencode
@@ -285,6 +125,7 @@ class FTPDispatcher(BaseDispatcher):
         return ftp
 
     def _check_ftp_connection(self):
+        """"""
         from ftplib import error_temp
         try:
             self.ftp.sendcmd('NOOP')
@@ -296,6 +137,7 @@ class FTPDispatcher(BaseDispatcher):
 
     @staticmethod
     def _sanitize_path(path):
+        """"""
         return '{}'.format(path).replace('\\', '/')
 
     def close(self):
@@ -319,14 +161,7 @@ class FTPDispatcher(BaseDispatcher):
         return dst
 
     def repo_is_busy(self):
-        """Проверка на блокировку репозитория"""
         return BUSYMESSAGE in (fname for fname, _ in self.ftp.mlsd(self.repopath))
-
-    # @property
-    # def index_create_date(self) -> datetime:
-    #     mdate_as_string = self.ftp.sendcmd('MDTM %s' % self.index_file_path).split()[1]
-    #     create_date = datetime.strptime(mdate_as_string, '%Y%m%d%H%M%S')
-    #     return create_date
 
 
 class Dispatcher(object):

@@ -37,7 +37,7 @@ class _Dispatcher(object):
     Основные функции:
         init
         read
-        write
+        write_data
         clean
         write_hash_sum
     """
@@ -92,7 +92,7 @@ class _Dispatcher(object):
             gzip_fname += 'gz'
 
         with gzip.open(gzip_fname, mode='wt', compresslevel=self.gzcompression, encoding=self.encoding) as fp:
-            fp.write(data)
+            fp.write_data(data)
 
     def _gzip_read(self, gzip_fname):
         """Чтение данных из gzip архива"""
@@ -182,7 +182,7 @@ class _Dispatcher(object):
     def read(self):
         return self._from_json(self._gzip_read(self.indexfile))
 
-    def write(self, data):
+    def write_data(self, data):
         self.logger.debug('запись индекс-файла')
         json_data = self._to_json(data)
         return self._gzip_write(self.indexfile, json_data)

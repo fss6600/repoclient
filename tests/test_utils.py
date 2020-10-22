@@ -1,7 +1,7 @@
 import unittest
 from collections import OrderedDict
 
-from eiisclient.utils import unjsonify, jsonify
+from eiisclient.functions import unjsonify, jsonify
 
 TEST_DICT = OrderedDict({'KEY_1': 'DATA_1',
              'KEY_2': ['DATA_2'],

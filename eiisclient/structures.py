@@ -29,8 +29,10 @@ if sys.version_info >= (3, 7):
     PackData = make_dataclass('PackData', [('origin', str), ('installed', bool), ('checked', bool), ('status', int)])
 else:
     class PackData:
-        def __init__(self, origin: str = None, installed: bool = False, checked: bool = False,
-                     status: int = State.NON):
+        def __init__(self, origin: str = None,
+                     installed: bool = False,
+                     checked: bool = False,
+                     status: State = State.NON):
             self.origin = origin
             self.installed = installed
             self.checked = checked

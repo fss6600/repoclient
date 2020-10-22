@@ -9,7 +9,8 @@ from collections.abc import Iterator
 
 from eiisclient.exceptions import *
 from eiisclient.manage import Action, Manager, Status
-from eiisclient.utils import file_hash_calc, unjsonify, get_temp_dir, gzip_read, jsonify
+from eiisclient.functions import file_hash_calc, unjsonify, get_temp_dir, gzip_read, jsonify
+from eiisclient.manager import LOCAL_INDEX_FILE
 from tests.eiisrepo.eiisrepo import Manager as Repomanager
 from tests.utils import FILEFORDELETE, create_test_repo
 
@@ -411,7 +412,7 @@ class Manage_2_WorkTestCase(unittest.TestCase):
         self.assertIsInstance(res1, dict)
         self.assertDictEqual(res1, {})
 
-        with open(self.manager.local_index_file, 'w') as fp:
+        with open(LOCAL_INDEX_FILE, 'w') as fp:
             fp.write(jsonify(res))
 
         res2 = self.manager.local_index()

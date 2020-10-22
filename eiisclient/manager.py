@@ -3,32 +3,32 @@ from __future__ import print_function
 
 import logging
 import os
-import shutil
 import threading
 import weakref
-from collections import Counter, OrderedDict, namedtuple
+from collections import OrderedDict, namedtuple
 from collections.abc import Iterable, Iterator
 from datetime import datetime
-from enum import Enum
 from queue import Empty, Queue
-from time import sleep
 from tempfile import TemporaryDirectory
 
 import pythoncom
 import winshell
 
-from eiisclient import (DEFAULT_ENCODING, DEFAULT_FTP_ENCODING, WORK_DIR, PROFILE_INSTALL_PATH,
-                        DEFAULT_INSTALL_PATH, CONFIGFILE, INDEX_FILE_NAME, INDEX_HASH_FILE_NAME,
-                        LOCAL_INDEX_FILE, LOCAL_INDEX_FILE_HASH)
+from eiisclient import (DEFAULT_ENCODING, DEFAULT_FTP_ENCODING, WORK_DIR, PROFILE_INSTALL_PATH, DEFAULT_INSTALL_PATH,
+                        CONFIGFILE)
 from eiisclient.dispatch import BaseDispatcher, get_dispatcher
-from eiisclient.exceptions import (DispatcherActivationError, DownloadPacketError, LinkUpdateError, NoUpdates,
-                                   PacketDeleteError, RepoIsBusy, PacketInstallError, LinkDisabled, LinkNoData,
+from eiisclient.exceptions import (LinkUpdateError, NoUpdates, RepoIsBusy, PacketInstallError, LinkDisabled, LinkNoData,
                                    IndexFixError, NoIndexFileOnServerError, HashMismatchError)
-from eiisclient.utils import (file_hash_calc, unjsonify, jsonify, change_write_mod, read_file, gzread)
+from eiisclient.functions import (file_hash_calc, unjsonify, jsonify, read_file, gzread, write_data, remove, rmtree,
+                                  copytree)
 from eiisclient.structures import (PackList, ConfigDict, State, PackData, Task)
 
 THREADS = 3
 QUEUEMAXSIZE = 50
+LOCAL_INDEX_FILE = os.path.normpath(os.path.join(WORK_DIR, 'index.json'))
+LOCAL_INDEX_FILE_HASH = '{}.sha1'.format(LOCAL_INDEX_FILE)
+INDEX_FILE_NAME = 'Index.gz'
+INDEX_HASH_FILE_NAME = 'Index.gz.sha1'
 
 
 def get_stdout_logger() -> logging.Logger:
@@ -45,12 +45,10 @@ def get_config() -> ConfigDict:
     )
 
 
-def read_config(encode: str=DEFAULT_ENCODING) -> dict:
+def read_config() -> dict:
     """
     Возвращает данные конфигурационного файла или пустой словарь
 
-    :param workdir: полный путь к конфиг-файлу
-    :param encode: кодировка файла
     :return: словарь с даннымим или пустой
     """
     try:
@@ -71,19 +69,17 @@ class Manager:
         self.logger = logger or get_stdout_logger()
         self.config = get_config()
         if not os.path.exists(WORK_DIR):
-            os.mkdir(WORK_DIR, exist_ok=True)
+            os.makedirs(WORK_DIR, exist_ok=True)
         # обновление параметров из файла настроек
         self.config.update(read_config())
         #
         self._local_index = None  # type: dict
         self._remote_index = None  # type: dict
-        # self._eiispath = PROFILE_INSTALL_PATH if self.config.install_to_profile else DEFAULT_INSTALL_PATH
         self._tempdir = self._get_temp_dir()
         self._buffer = os.path.join(WORK_DIR, 'buffer')
         self._task_queue_k = kwargs.get('kqueue', 2)  # коэффициент размера основной очереди загрузки
         self._pack_list = self._get_pack_list(False)  # type: PackList # - перечень пакетов со статусами
         self._info_list = self._get_info_list()  # type: dict # - информация о репозитории, установленных пакетах,..
-
         self._desktop = winshell.desktop()
         self._finalize = weakref.finalize(self, self._clean)
         self._disp = None  # type: BaseDispatcher
@@ -102,14 +98,6 @@ class Manager:
         return '<Manager: {}>'.format(id(self))
 
     @property
-    def local_index_file(self):
-        return LOCAL_INDEX_FILE
-
-    @property
-    def local_index_file_hash(self):
-        return LOCAL_INDEX_FILE_HASH
-
-    @property
     def eiispath(self) -> str:
         return PROFILE_INSTALL_PATH if self.config.install_to_profile else DEFAULT_INSTALL_PATH
 
@@ -120,9 +108,6 @@ class Manager:
     @property
     def info_list(self):
         return self._info_list
-
-    def update_info_list(self):
-        self._info_list = self._get_info_list()
 
     def check_updates(self):
         self.logger.info('Чтение данных репозитория\n')
@@ -171,14 +156,14 @@ class Manager:
                 self.logger.debug('start_update: активация диспетчера')
                 # Step 1: формирование задач для обработки файлов пакетов из репозитория
                 tasks = self.get_task(packs)
-                if self.debug:
-                    ts_start = datetime.now()
+                # if self.debug:
+                #     ts_start = datetime.now()
 
                 # Step 2: обработка файлов пакета (загрузка или удаление)
                 self.handle_tasks(tasks)
 
-                if self.debug:
-                    self.logger.debug('start_update: обработка выполнена за {}'.format(datetime.now() - ts_start))
+                # if self.debug:
+                #     self.logger.debug('start_update: обработка выполнена за {}'.format(datetime.now() - ts_start))
 
                 # Step 3: перемещение скачанных пакетов из буфера в папку установки
                 if not self.buffer_is_empty():
@@ -194,8 +179,8 @@ class Manager:
 
             # 3 фиксация данных индекса репозитория
             try:
-                self._disp.write(LOCAL_INDEX_FILE_HASH, self.remote_index_hash)
-                self._disp.write(LOCAL_INDEX_FILE, jsonify(self._remote_index))
+                write_data(LOCAL_INDEX_FILE, jsonify(self.remote_index))
+                write_data(LOCAL_INDEX_FILE_HASH, self.remote_index_hash)
             except Exception as err:
                 raise IndexFixError('Ошибка фиксации данных индекса репозитория') from err
         finally:
@@ -203,7 +188,7 @@ class Manager:
 
     def reset(self, remote=False):
         self._pack_list = self._get_pack_list(remote)
-        self._info_list = self._get_info_list(remote)
+        self._info_list = self._get_info_list()
 
     @property
     def repo_updated(self) -> bool:
@@ -230,6 +215,10 @@ class Manager:
         self._disp = get_dispatcher(self.config.repopath, logger=self.logger, encode=self.config.encode,
                                     ftpencode=self.config.ftpencode, tempdir=self._tempdir)
 
+    def _get_dispatcher(self):
+        return get_dispatcher(self.config.repopath, logger=self.logger, encode=self.config.encode,
+                                    ftpencode=self.config.ftpencode, tempdir=self._tempdir)
+
     def _dispatcher_stop(self):
         """
         Деактивация диспетчера
@@ -239,7 +228,7 @@ class Manager:
             self._disp.close()
             self._disp = None
 
-    def _get_info_list(self, remote=False) -> dict:
+    def _get_info_list(self) -> dict:
         packets_in_repo = None
         remote_index_last_change = None
         repo_updated = None
@@ -293,7 +282,7 @@ class Manager:
         for pack, pack_data in packages:
             fp = os.path.join(self.eiispath, pack_data.origin)
             try:
-                self._disp.rmtree(fp)
+                rmtree(fp)
             except Exception as err:
                 self.logger.error('Ошибка удаления пакета {}: {}'.format(pack, err))
             else:
@@ -304,7 +293,7 @@ class Manager:
                 self._remove_shortcut(pack)
                 self.logger.debug('delete_packages: удален ярлык для {}'.format(pack))
             except LinkUpdateError:
-                self.logger.error('ошибка удаления ярлыка для {}'.format(packe))
+                self.logger.error('ошибка удаления ярлыка для {}'.format(pack))
 
     def set_full(self, value=False):
         self._full = value
@@ -318,7 +307,7 @@ class Manager:
                     self._disp.get_file(INDEX_FILE_NAME, fp)
                 except FileNotFoundError:
                     raise NoIndexFileOnServerError
-                except AttributeError: # диспетчер не активирован
+                except AttributeError:  # диспетчер не активирован
                     return {}
             self._remote_index = unjsonify(gzread(fp, encode=DEFAULT_ENCODING))
         return self._remote_index
@@ -337,7 +326,7 @@ class Manager:
         if not os.path.exists(fp):
             try:
                 self._disp.get_file(INDEX_HASH_FILE_NAME, fp)
-            except AttributeError: # диспетчер не активирован
+            except AttributeError:  # диспетчер не активирован
                 return None
             except FileNotFoundError:
                 raise NoIndexFileOnServerError('Не найден файл хэш-суммы индекса')
@@ -368,7 +357,7 @@ class Manager:
 
     @property
     def local_index_hash(self) -> str:
-        return read_file(self.local_index_file_hash)
+        return read_file(LOCAL_INDEX_FILE_HASH)
 
     # +
     def _get_pack_list(self, remote) -> PackList:
@@ -441,8 +430,7 @@ class Manager:
     def get_task(self, pack_list) -> Iterator:
         """
         Формирование задачи для установки/обновления или удаления файлов пакета
-        :param pack_alias: псевдоним пакета
-        :param pack_origin: имя пакета
+        :param pack_list: список пакетов
         :return: Iterator: namedtuple('Task', ('packetname action src dst hash'))
         """
         self.logger.info('Формирование списка файлов пакетов для обработки')
@@ -504,7 +492,8 @@ class Manager:
                         task, task_id = self._build_task(pack_data.origin, rfile, State.NEW, hash)
                         yield task
                         self.logger.debug('get_task: сформирована задача на загрузку: <{}> {}'.format(task_id, task))
-                    elif self._full or not local_list_map[lfile] == remote_list_map[rfile]:  # загружаем при несоответствии хэшей
+                    elif self._full or not local_list_map[lfile] == remote_list_map[
+                        rfile]:  # загружаем при несоответствии хэшей
                         # self.logger.debug('get_task: хэши не равны')
                         task, task_id = self._build_task(pack_data.origin, rfile, State.UPD, hash)
                         yield task
@@ -540,7 +529,7 @@ class Manager:
         else:
             src = os.path.join(self._disp.repopath, package, file)  # путь файла-источника для получения
             dst = os.path.realpath(os.path.join(self._buffer, package, file))
-            task = Task(package, action, src, dst, hash)
+        task = Task(package, action, src, dst, hash)
         return task, id(task)
 
     # +
@@ -598,7 +587,6 @@ class Manager:
 
         self.logger.debug('handle_tasks: очередь обработана')
 
-
         # end up
 
     # +
@@ -612,16 +600,16 @@ class Manager:
         remote_packages = self.remote_index_packages
         for package in self.buffer_content():
             if package not in (data.origin for _, data in packs):  # пакет остался с прошлой неудачной установки
-                self.logger.warn('install_packets: {} есть в буфере, '
+                self.logger.warning('install_packets: {} есть в буфере, '
                                  'но нет в списке устанавливаемых пакетов - пропуск'.format(package))
                 continue
 
             src = os.path.join(self._buffer, package)
             dst = os.path.join(self.eiispath, package)
 
+            title = remote_packages[package]['alias'] or package
             try:
                 self.move_package(src, dst)
-                title = remote_packages[package]['alias'] or package
                 execf = os.path.join(self.eiispath, package, remote_packages[package]['execf'])
                 self._create_shortcut(title, execf)
             except PermissionError as err:
@@ -669,7 +657,7 @@ class Manager:
                 lp.path = exe_file_path
                 lp.description = 'Запуск подсистемы "{}" ЕИИС Соцстрах РФ'.format(title)
                 lp.working_directory = workdir
-                lp.write()
+                lp.write_data()
                 self.logger.debug('создан ярлык: {}'.format(lnpath))
         except Exception as err:
             raise LinkUpdateError from err
@@ -678,7 +666,7 @@ class Manager:
         title, _ = self._get_link_data(pack)
         link_path = os.path.join(self._desktop, title + '.lnk')
         try:
-            self._disp.remove(link_path)
+            remove(link_path)
             self.logger.debug('удален ярлык: {}'.format(link_path))
         except FileNotFoundError:
             pass
@@ -689,7 +677,7 @@ class Manager:
     # +
     def clean_buffer(self) -> bool:
         try:
-            self._disp.rmdir(self._buffer)
+            rmtree(self._buffer)
         except Exception as err:
             self.logger.error('Ошибка учистки буфера')
             if self.debug:
@@ -713,8 +701,8 @@ class Manager:
 
     def move_package(self, src, dst):
         self.logger.debug('move_package: перенос пакета {} -> {}'.format(src, dst))
-        self._disp.copytree(src, dst)
-        self._disp.rmtree(src)
+        copytree(src, dst)
+        rmtree(src)
 
     def _get_temp_dir(self):
         tmpdir = getattr(self, '_tempdir', None)
@@ -752,8 +740,6 @@ class Worker(threading.Thread):
                 try:
                     task = self.queue.get(timeout=1)
                 except Empty:
-                    # sleep(.5)
-                    # continue
                     self.logger.debug('worker {}: очередь пустая, выхожу'.format(self))
                     return
                 # start real work
@@ -762,7 +748,7 @@ class Worker(threading.Thread):
 
                 # удаление
                 if task.action == State.DEL:
-                    self.dispatcher.remove(task.src, onerror=True)
+                    remove(task.src, raise_=True)
                     self.queue.task_done()
                     continue
 
@@ -786,9 +772,10 @@ class Worker(threading.Thread):
                             self, task_id, hash_sum, task.hash, fault_count))
                         if fault_count >= self.max_repeat:
                             self.logger.debug('worker {}: <{}> исчерпан лимит загрузок файла'.format(self, task_id))
-                            raise HashMismatchError('Неверная контрольная сумма файла `{}` из пакета `{}`'.format(os.path.basename(task.src), task.packetname))
+                            raise HashMismatchError('Неверная контрольная сумма файла `{}` из пакета `{}`'.format(
+                                os.path.basename(task.src), task.packetname))
                         else:
-                            self.dispatcher.remove(task.dst, onerror=True)
+                            remove(task.dst, raise_=True)
                             self.logger.debug('worker {}: {} удален'.format(self, task.dst))
                             continue
                     break
