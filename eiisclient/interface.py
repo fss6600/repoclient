@@ -58,6 +58,7 @@ class MainFrame(fmMain):
 
         self.manager = Manager(logger=self.logger)
         self.refresh_gui()
+        self.processBar.SetValue(0)
         self.Show()
 
     def on_check(self, event):
@@ -112,6 +113,7 @@ class MainFrame(fmMain):
         self.manager.reset()
         self.btUpdate.Disable()
         self.menuService.Enable(id=self.menuUpdate.GetId(), enable=False)
+        self.processBar.SetValue(0)
         self.refresh_gui()
 
     def on_btFull(self, event):
@@ -239,7 +241,7 @@ class MainFrame(fmMain):
         """Процесс проверки наличия обновлений"""
         try:
             self.deactivate_interface()
-            self.manager.check_updates()
+            self.manager.check_updates(self.processBar)
         except NoUpdates as e:
             self.checked = True
             self.logger.info(e)
@@ -260,7 +262,7 @@ class MainFrame(fmMain):
         """Процесс обновления/установки/удаления пакетов"""
         try:
             self.deactivate_interface()
-            self.manager.start_update()
+            self.manager.start_update(self.processBar)
         except InterruptedError:
             return
         except Exception as e:
@@ -381,6 +383,7 @@ class ConfigFrame(fmConfig):
             write_data(CONFIGFILE, jsonify(self.config))
             self.mframe.on_reset(None)
             self.mframe.logger.info('Настройки применены')
+            self.mframe.logger.info('--\n')
         self.Destroy()
 
     def Cancel(self, event):

@@ -103,6 +103,13 @@ class fmMain ( wx.Frame ):
         self.wxLogView = wx.TextCtrl( self.m_panel6, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, wx.HSCROLL|wx.TE_MULTILINE|wx.TE_NOHIDESEL|wx.TE_READONLY|wx.TE_RICH )
         bSizer11.Add( self.wxLogView, 1, wx.ALL|wx.EXPAND, 5 )
 
+        self.processBar = wx.Gauge( self.m_panel6, wx.ID_ANY, 100, wx.DefaultPosition, wx.DefaultSize, wx.GA_HORIZONTAL )
+        self.processBar.SetValue( 0 )
+        self.processBar.SetForegroundColour( wx.SystemSettings.GetColour( wx.SYS_COLOUR_WINDOW ) )
+        self.processBar.SetBackgroundColour( wx.SystemSettings.GetColour( wx.SYS_COLOUR_WINDOW ) )
+
+        bSizer11.Add( self.processBar, 0, wx.ALL|wx.EXPAND, 0 )
+
         bSizer12 = wx.BoxSizer( wx.HORIZONTAL )
 
 

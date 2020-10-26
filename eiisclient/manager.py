@@ -10,6 +10,7 @@ from collections.abc import Iterable, Iterator
 from datetime import datetime
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
+from time import sleep
 
 import pythoncom
 import winshell
@@ -109,17 +110,21 @@ class Manager:
     def info_list(self):
         return self._info_list
 
-    def check_updates(self):
+    def check_updates(self, processBar):
         self.logger.info('Чтение данных репозитория')
+        processBar.SetValue(0)
         try:
             self.logger.debug('check_updates: активация диспетчера')
             self._tempdir = self._get_temp_dir()
             self._remote_index = None
             self._dispatcher_run()
+            # processBar.SetValue(10)
+            self._info_list = self._get_info_list()
             if self._disp.repo_is_busy():
                 raise RepoIsBusy
             self._pack_list = self._get_pack_list(remote=True)
-            self._info_list = self._get_info_list()
+            processBar.SetValue(50)
+            processBar.SetValue(100)
 
             if not self.repo_updated:
                 raise NoUpdates
@@ -128,12 +133,13 @@ class Manager:
             self.logger.debug('check_updates: деактивация диспетчера')
             self._dispatcher_stop()
 
-    def start_update(self):
+    def start_update(self, processBar):
         """
         Процедура обновления пакетов
 
         :return:
         """
+        processBar.SetValue(0)
         try:
             self._dispatcher_run()
             if self._disp.repo_is_busy():
@@ -151,11 +157,13 @@ class Manager:
             if self.debug:
                 self.logger.debug(action_list)
 
-            packs = action_list.get('update', [])
-            if packs:
+            packs_handle = action_list.get('update', [])
+            packs_delete = action_list.get('delete', [])
+            processBar.SetRange(len(packs_handle) * 2 + len(packs_delete))
+            if packs_handle:
                 self.logger.debug('start_update: активация диспетчера')
                 # Step 1: формирование задач для обработки файлов пакетов из репозитория
-                tasks = self.get_task(packs)
+                tasks = self.get_task(packs_handle, processBar)
                 # if self.debug:
                 #     ts_start = datetime.now()
 
@@ -168,14 +176,14 @@ class Manager:
                 # Step 3: перемещение скачанных пакетов из буфера в папку установки
                 if not self.buffer_is_empty():
                     # перенос файлов пакетов из буфера в папку назначения
-                    self.flush_buffer(packs)
+                    self.flush_buffer(packs_handle, processBar)
             else:
                 self.logger.info('Нет пакетов для установки или обновления')
 
             # 2 удаление пакетов
-            packs = action_list.get('delete', [])
-            if packs:
-                self.delete_packages(packs)
+            # packs_handle = action_list.get('delete', [])
+            if packs_delete:
+                self.delete_packages(packs_delete, processBar)
 
             # 3 фиксация данных индекса репозитория
             try:
@@ -277,8 +285,8 @@ class Manager:
         else:
             return iter([])
 
-    def delete_packages(self, packages: list):
-        self.logger.info('Удаление пакетов')
+    def delete_packages(self, packages: list, processBar):
+        self.logger.info('Удаление пакетов:')
         for pack, pack_data in packages:
             fp = os.path.join(self.eiispath, pack_data.origin)
             try:
@@ -294,6 +302,8 @@ class Manager:
                 self.logger.debug('delete_packages: удален ярлык для {}'.format(pack))
             except LinkUpdateError:
                 self.logger.error('ошибка удаления ярлыка для {}'.format(pack))
+
+            processBar.SetValue(processBar.GetValue() + 1)
 
     def set_full(self, value=False):
         self._full = value
@@ -425,7 +435,7 @@ class Manager:
 
         return pack_list
 
-    def get_task(self, pack_list) -> Iterator:
+    def get_task(self, pack_list, processBar) -> Iterator:
         """
         Формирование задачи для установки/обновления или удаления файлов пакета
         :param pack_list: список пакетов
@@ -435,6 +445,7 @@ class Manager:
         self.logger.debug('get_task: подготовка словарей с данными о пакетах')
         r_packages = self.remote_index_packages  # get remote packages map
         l_packages = self.local_index_packages  # get local packages map
+        self.logger.info('Загрузка файлов:')
 
         for pack_alias, pack_data in pack_list:
             self.logger.info('\t`{}`'.format(pack_alias))
@@ -518,6 +529,7 @@ class Manager:
                     self.logger.debug('get_task: local индекс: {}'.format(l_index))
                 else:
                     raise IndexError('Что-то пошло не так с индексами, при проходе списков файлов на обработку')
+            processBar.SetValue(processBar.GetValue() + 1)
 
     def _build_task(self, package, file, action, hash=None) -> (namedtuple, int):
         if action == State.DEL:
@@ -575,8 +587,6 @@ class Manager:
                 if worker.isAlive():
                     worker.join()
 
-        # except InterruptedError:
-
         finally:
             if exc_queue.qsize():
                 self.logger.debug('выгрузка исключений из очереди')
@@ -588,7 +598,7 @@ class Manager:
         self.logger.debug('handle_tasks: очередь обработана')
         # end up
 
-    def flush_buffer(self, packs: Iterable):
+    def flush_buffer(self, packs: Iterable, processBar):
         """
         Перемещение пакетов из буфера в папку установки
         :param packs: Список пакетов на обработку
@@ -621,6 +631,8 @@ class Manager:
                 raise PacketInstallError('Ошибка при установке пакета {}'.format(package)) from err
             else:
                 self.logger.debug('install_packets: `{}` перемещен из буфера в {}'.format(package, dst))
+
+            processBar.SetValue(processBar.GetValue() + 1)
         self.clean_buffer()
 
     def update_links(self):
