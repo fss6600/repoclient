@@ -981,7 +981,7 @@
                 <property name="window_extra_style"></property>
                 <property name="window_name"></property>
                 <property name="window_style"></property>
-                <object class="wxMenu" expanded="0">
+                <object class="wxMenu" expanded="1">
                     <property name="label">Файл</property>
                     <property name="name">menuFile</property>
                     <property name="permission">protected</property>
@@ -997,7 +997,7 @@
                         <property name="permission">none</property>
                         <property name="shortcut">F5</property>
                         <property name="unchecked_bitmap"></property>
-                        <event name="OnMenuSelection">on_update</event>
+                        <event name="OnMenuSelection">on_reset</event>
                     </object>
                     <object class="separator" expanded="0">
                         <property name="name">m_separator2</property>
@@ -1060,19 +1060,37 @@
                     <property name="label">Сервис</property>
                     <property name="name">menuService</property>
                     <property name="permission">protected</property>
-                    <object class="wxMenuItem" expanded="0">
+                    <object class="wxMenuItem" expanded="1">
                         <property name="bitmap"></property>
                         <property name="checked">0</property>
                         <property name="enabled">1</property>
-                        <property name="help">Настройки программы</property>
+                        <property name="help">Запустить процесс проверки наличия обновлений в репозитории</property>
                         <property name="id">wxID_ANY</property>
                         <property name="kind">wxITEM_NORMAL</property>
-                        <property name="label">Настройки</property>
-                        <property name="name">menuConfig</property>
+                        <property name="label">Проверить обновления</property>
+                        <property name="name">menuCheckUpdate</property>
                         <property name="permission">none</property>
-                        <property name="shortcut"></property>
+                        <property name="shortcut">F2</property>
                         <property name="unchecked_bitmap"></property>
-                        <event name="OnMenuSelection">on_config</event>
+                        <event name="OnMenuSelection">on_check</event>
+                    </object>
+                    <object class="wxMenuItem" expanded="1">
+                        <property name="bitmap"></property>
+                        <property name="checked">0</property>
+                        <property name="enabled">0</property>
+                        <property name="help">Запустить процесс обновления</property>
+                        <property name="id">wxID_ANY</property>
+                        <property name="kind">wxITEM_NORMAL</property>
+                        <property name="label">Обновить</property>
+                        <property name="name">menuUpdate</property>
+                        <property name="permission">none</property>
+                        <property name="shortcut">F3</property>
+                        <property name="unchecked_bitmap"></property>
+                        <event name="OnMenuSelection">on_update</event>
+                    </object>
+                    <object class="separator" expanded="1">
+                        <property name="name">m_separator6</property>
+                        <property name="permission">none</property>
                     </object>
                     <object class="submenu" expanded="1">
                         <property name="bitmap">Load From Art Provider; wxART_DELETE; wxART_BUTTON</property>
@@ -1125,6 +1143,24 @@
                         <property name="shortcut"></property>
                         <property name="unchecked_bitmap"></property>
                         <event name="OnMenuSelection">on_btFull</event>
+                    </object>
+                    <object class="separator" expanded="1">
+                        <property name="name">m_separator7</property>
+                        <property name="permission">none</property>
+                    </object>
+                    <object class="wxMenuItem" expanded="0">
+                        <property name="bitmap"></property>
+                        <property name="checked">0</property>
+                        <property name="enabled">1</property>
+                        <property name="help">Настройки программы</property>
+                        <property name="id">wxID_ANY</property>
+                        <property name="kind">wxITEM_NORMAL</property>
+                        <property name="label">Настройки</property>
+                        <property name="name">menuConfig</property>
+                        <property name="permission">none</property>
+                        <property name="shortcut"></property>
+                        <property name="unchecked_bitmap"></property>
+                        <event name="OnMenuSelection">on_config</event>
                     </object>
                 </object>
                 <object class="wxMenu" expanded="0">

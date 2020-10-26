@@ -15,7 +15,7 @@ from eiisclient import (__version__, __email__, __division__, __author__,
 from eiisclient.structures import State
 from eiisclient.exceptions import RepoIsBusy, NoUpdates
 from eiisclient.manager import Manager
-from eiisclient.functions import hash_calc, jsonify
+from eiisclient.functions import hash_calc, jsonify, write_data
 from eiisclient.gui.MainFrame import fmMain, fmConfig
 
 # colors
@@ -53,9 +53,8 @@ class MainFrame(fmMain):
         self.wxInfo.AppendColumn(col_01)
         self.wxInfo.AppendColumn(col_02)
 
-        self.wxStatusBar.SetFieldsCount(4, [100, 180, -1, 20])
-        self.wxStatusBar.SetStatusText('Версия: {}'.format(__version__))
-        self.wxStatusBar.SetStatusText('Обновление ЕИИС "Соцстрах"', 1)
+        self.wxStatusBar.SetFieldsCount(3, [-1, 300, 250])
+        self.wxStatusBar.SetStatusText('Обновление ЕИИС "Соцстрах". Версия: {}'.format(__version__), 2)
 
         self.manager = Manager(logger=self.logger)
         self.refresh_gui()
@@ -73,7 +72,7 @@ class MainFrame(fmMain):
     def on_pack_list_item_select( self, event ):
         pack_name = self.wxPackList.GetString(event.Selection)
         info = '{} [{}]'.format(pack_name, self.manager.pack_list[pack_name].origin)
-        self.wxStatusBar.SetStatusText(info, 2)
+        self.wxStatusBar.SetStatusText(info)
 
     def on_enter_log_info(self, event):
         self.wxLogView.SetFocus()
@@ -82,7 +81,7 @@ class MainFrame(fmMain):
         self.wxPackList.SetFocus()
 
     def on_pack_list_leave(self, event):
-        self.wxStatusBar.SetStatusText('', 2)
+        self.wxStatusBar.SetStatusText('')
         try:
             selected = self.wxPackList.GetSelections()[0]
             self.wxPackList.Deselect(selected)
@@ -112,6 +111,7 @@ class MainFrame(fmMain):
     def on_reset(self, event):
         self.manager.reset()
         self.btUpdate.Disable()
+        self.menuService.Enable(id=self.menuUpdate.GetId(), enable=False)
         self.refresh_gui()
 
     def on_btFull(self, event):
@@ -121,7 +121,7 @@ class MainFrame(fmMain):
             self.manager.set_full(False)
 
     def on_menu_select_all(self, event):
-        dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УСТАНОВИТЬ ВСЕ ПАКЕТЫ?',
+        dlg = wx.MessageDialog(None, 'Вы уверены, что хотите установить все пакеты?',
                                'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_YES:
             self.wxPackList.Freeze()
@@ -131,7 +131,7 @@ class MainFrame(fmMain):
             self.wxPackList.Thaw()
 
     def on_menu_unselect_all(self, event):
-        dlg = wx.MessageDialog(None, 'Вы уверены, что хотите УДАЛИТЬ ВСЕ ПАКЕТЫ?',
+        dlg = wx.MessageDialog(None, 'Вы уверены, что хотите удалить все пакеты?',
                                'Выбор пакетов', wx.YES_NO | wx.ICON_QUESTION)
         if dlg.ShowModal() == wx.ID_YES:
             self.wxPackList.Freeze()
@@ -154,12 +154,19 @@ class MainFrame(fmMain):
     def on_help(self, event):
         import webbrowser
         try:
-            docs_path = pathlib.Path(sys._MEIPASS).joinpath('docs')
-            url = docs_path.joinpath('index.html').as_uri()
-            webbrowser.open(url, new=1, autoraise=True)
+            docs_path = pathlib.Path(sys._MEIPASS).joinpath('docs')  # путь после компиляции
+            url = docs_path.joinpath('index.html')
+        except AttributeError:
+            url = pathlib.Path.cwd().parent / 'docs' / 'build' / 'html' / 'index.html'  # путь при разработке
+            self.logger.debug(url)
+
+        try:
+            webbrowser.open(url.as_uri(), new=1, autoraise=True)
             self.logger.info('Запущен интернет-браузер с документацией')
         except Exception as err:
             self.logger.error(err)
+            if self.debug:
+                self.logger.exception(err)
 
     def on_pack_list_item_toggled( self, event ):
         self._pack_list_toggle_item(event.Selection)
@@ -189,12 +196,14 @@ class MainFrame(fmMain):
         self.wxPackList.Enable()
         if self.checked:
             self.btUpdate.Enable()
+            self.menuService.Enable(id=self.menuUpdate.GetId(), enable=True)
         self.btCheck.Enable()
         self.btRefresh.Enable()
         self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=True)
         self.menuService.Enable(id=self.menuConfig.GetId(), enable=True)
         self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=True)
         self.menuService.Enable(id=self.btFull.GetId(), enable=True)
+        self.menuService.Enable(id=self.menuCheckUpdate.GetId(), enable=True)
         self.btFull.Check(False)
         self.on_btFull(None)
         #
@@ -210,6 +219,8 @@ class MainFrame(fmMain):
         self.menuService.Enable(id=self.menuConfig.GetId(), enable=False)
         self.menuService.Enable(id=self.menuitemLinksUpdate.GetId(), enable=False)
         self.menuService.Enable(id=self.btFull.GetId(), enable=False)
+        self.menuService.Enable(id=self.menuCheckUpdate.GetId(), enable=False)
+        self.menuService.Enable(id=self.menuUpdate.GetId(), enable=False)
         #
 
     # logic functions
@@ -299,10 +310,8 @@ class MainFrame(fmMain):
         """"""
         self.wxInfo.Freeze()
         self.wxInfo.DeleteAllItems()
-
         for k, v in self.manager.info_list.items():
             self.wxInfo.AppendItem([k, '-' if v is None else str(v)])
-
         self.wxInfo.Thaw()
 
 
@@ -313,7 +322,6 @@ class ConfigFrame(fmConfig):
         self.config = mframe.manager.config
         self.mframe = mframe
         self.config_hash = hash_calc(self.config)
-        # fixme eiis install path states
         self.install_to_profile = self.config.install_to_profile
         self.eiis_path = PROFILE_INSTALL_PATH if self.install_to_profile else DEFAULT_INSTALL_PATH
         self.wxRepoPath.Value = self.config.repopath or ''
@@ -323,17 +331,13 @@ class ConfigFrame(fmConfig):
         else:
             self.wxEiisInstallPath.SetPath(DEFAULT_INSTALL_PATH)
         self.wxEiisInstallPath.Enable(False)
-
         self.wxThreadsCount.Select(self.config.threads - 1)
-        # self.wxPurgePackets.SetValue(self.config.purge)
-        # значение кодировки файлов временно заблокировано до перехода на UTF-8
         self.wxFTPEncode.SetValue(self.config.ftpencode)
-
         self.sdApply.Label = 'Применить'
         self.sdCancel.Label = 'Отменить'
         self.sdCancel.SetFocus()
 
-    def on_eiis_path_click(self, event=None):
+    def on_eiis_path_click(self, event):
         if self.wxInstallToUserProfile.GetValue():
             self.wxEiisInstallPath.SetPath(PROFILE_INSTALL_PATH)
         else:
@@ -353,8 +357,6 @@ class ConfigFrame(fmConfig):
 
         #  write_data to file if changed
         if not hash_calc(self.config) == self.config_hash:
-            # full = False
-
             if not self.config.install_to_profile == self.install_to_profile:
                 try:
                     packages = os.listdir(self.eiis_path)
@@ -376,12 +378,9 @@ class ConfigFrame(fmConfig):
                                         'Не достаточно прав доступа или не закрыты файлы подсистемы')
                 except FileNotFoundError as err:
                     self.mframe.logger.debug(err)
-            with open(CONFIGFILE, 'w', encoding=DEFAULT_ENCODING) as fp:
-                fp.write(jsonify(self.config))
-            self.mframe.manager.reset()
-            self.mframe.refresh_gui()  # update gui
+            write_data(CONFIGFILE, jsonify(self.config))
+            self.mframe.on_reset(None)
             self.mframe.logger.info('Настройки применены')
-
         self.Destroy()
 
     def Cancel(self, event):

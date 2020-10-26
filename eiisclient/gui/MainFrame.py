@@ -170,8 +170,14 @@ class fmMain ( wx.Frame ):
         self.wxMenuBar.Append( self.menuFile, u"Файл" )
 
         self.menuService = wx.Menu()
-        self.menuConfig = wx.MenuItem( self.menuService, wx.ID_ANY, u"Настройки", u"Настройки программы", wx.ITEM_NORMAL )
-        self.menuService.Append( self.menuConfig )
+        self.menuCheckUpdate = wx.MenuItem( self.menuService, wx.ID_ANY, u"Проверить обновления"+ u"\t" + u"F2", u"Запустить процесс проверки наличия обновлений в репозитории", wx.ITEM_NORMAL )
+        self.menuService.Append( self.menuCheckUpdate )
+
+        self.menuUpdate = wx.MenuItem( self.menuService, wx.ID_ANY, u"Обновить"+ u"\t" + u"F3", u"Запустить процесс обновления", wx.ITEM_NORMAL )
+        self.menuService.Append( self.menuUpdate )
+        self.menuUpdate.Enable( False )
+
+        self.menuService.AppendSeparator()
 
         self.m_menu1 = wx.Menu()
         self.menuitemCleanBuffer = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Очистить буфер", u"Очистить буфер", wx.ITEM_NORMAL )
@@ -186,6 +192,11 @@ class fmMain ( wx.Frame ):
 
         self.btFull = wx.MenuItem( self.menuService, wx.ID_ANY, u"Полная обработка", u"Включить режим полной обработки файлов пакетов", wx.ITEM_CHECK )
         self.menuService.Append( self.btFull )
+
+        self.menuService.AppendSeparator()
+
+        self.menuConfig = wx.MenuItem( self.menuService, wx.ID_ANY, u"Настройки", u"Настройки программы", wx.ITEM_NORMAL )
+        self.menuService.Append( self.menuConfig )
 
         self.wxMenuBar.Append( self.menuService, u"Сервис" )
 
@@ -216,14 +227,16 @@ class fmMain ( wx.Frame ):
         self.wxLogView.Bind( wx.EVT_ENTER_WINDOW, self.on_enter_log_info )
         self.btCheck.Bind( wx.EVT_BUTTON, self.on_check )
         self.btUpdate.Bind( wx.EVT_BUTTON, self.on_update )
-        self.Bind( wx.EVT_MENU, self.on_update, id = self.menuitemUpdate.GetId() )
+        self.Bind( wx.EVT_MENU, self.on_reset, id = self.menuitemUpdate.GetId() )
         self.Bind( wx.EVT_MENU, self.on_menu_select_all, id = self.menuitem_select_all.GetId() )
         self.Bind( wx.EVT_MENU, self.on_menu_unselect_all, id = self.menuitem_unselect_all.GetId() )
         self.Bind( wx.EVT_MENU, self.on_exit, id = self.menuitemExit.GetId() )
-        self.Bind( wx.EVT_MENU, self.on_config, id = self.menuConfig.GetId() )
+        self.Bind( wx.EVT_MENU, self.on_check, id = self.menuCheckUpdate.GetId() )
+        self.Bind( wx.EVT_MENU, self.on_update, id = self.menuUpdate.GetId() )
         self.Bind( wx.EVT_MENU, self.on_clean_buffer, id = self.menuitemCleanBuffer.GetId() )
         self.Bind( wx.EVT_MENU, self.on_links_update, id = self.menuitemLinksUpdate.GetId() )
         self.Bind( wx.EVT_MENU, self.on_btFull, id = self.btFull.GetId() )
+        self.Bind( wx.EVT_MENU, self.on_config, id = self.menuConfig.GetId() )
         self.Bind( wx.EVT_MENU, self.on_help, id = self.menuitemManual.GetId() )
         self.Bind( wx.EVT_MENU, self.on_about, id = self.menuitemHelp.GetId() )
 
@@ -272,8 +285,7 @@ class fmMain ( wx.Frame ):
     def on_exit( self, event ):
         pass
 
-    def on_config( self, event ):
-        pass
+
 
     def on_clean_buffer( self, event ):
         pass
@@ -282,6 +294,9 @@ class fmMain ( wx.Frame ):
         pass
 
     def on_btFull( self, event ):
+        pass
+
+    def on_config( self, event ):
         pass
 
     def on_help( self, event ):
