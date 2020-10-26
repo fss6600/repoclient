@@ -7,7 +7,7 @@ import weakref
 import locale
 
 from eiisclient import DEFAULT_ENCODING
-from eiisclient.exceptions import DispatcherActivationError
+from eiisclient.exceptions import DispatcherActivationError, RepoIsBusy
 
 BUSYMESSAGE = '__REGLAMENT__'
 
@@ -67,6 +67,8 @@ class FileDispatcher(BaseDispatcher):
         return '<File Dispatcher-{}>'.format(id(self))
 
     def get_file(self, src: str, dst: str) -> str:
+        if self.repo_is_busy():
+            raise RepoIsBusy
         src = os.path.normpath(os.path.join(self._repo, src))
         dst_dir = os.path.dirname(dst)
         if not os.path.exists(dst_dir):

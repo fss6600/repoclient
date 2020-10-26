@@ -79,8 +79,8 @@ class Manager:
         self._tempdir = self._get_temp_dir()
         self._buffer = os.path.join(WORK_DIR, 'buffer')
         self._task_queue_k = kwargs.get('kqueue', 2)  # коэффициент размера основной очереди загрузки
-        self._pack_list = self._get_pack_list(False)  # type: PackList # - перечень пакетов со статусами
-        self._info_list = self._get_info_list()  # type: dict # - информация о репозитории, установленных пакетах,..
+        self._pack_list = self._get_pack_list(remote=False)  # type: PackList # - перечень пакетов со статусами
+        self._info_list = self._get_info_list(remote=False)  # type: dict # - информация о репозитории, установленных пакетах,..
         self._desktop = winshell.desktop()
         self._finalize = weakref.finalize(self, self._clean)
         self._disp = None  # type: BaseDispatcher
@@ -118,12 +118,11 @@ class Manager:
             self._tempdir = self._get_temp_dir()
             self._remote_index = None
             self._dispatcher_run()
-            # processBar.SetValue(10)
-            self._info_list = self._get_info_list()
             if self._disp.repo_is_busy():
                 raise RepoIsBusy
             self._pack_list = self._get_pack_list(remote=True)
             processBar.SetValue(50)
+            self._info_list = self._get_info_list(remote=True)
             processBar.SetValue(100)
 
             if not self.repo_updated:
@@ -159,7 +158,9 @@ class Manager:
 
             packs_handle = action_list.get('update', [])
             packs_delete = action_list.get('delete', [])
-            processBar.SetRange(len(packs_handle) * 2 + len(packs_delete))
+            packets_size = self._calc_packets_size(packs_handle)
+            processBar.SetRange(packets_size + len(packs_handle) * 10 + len(packs_delete) * 10 + 10)
+
             if packs_handle:
                 self.logger.debug('start_update: активация диспетчера')
                 # Step 1: формирование задач для обработки файлов пакетов из репозитория
@@ -168,7 +169,7 @@ class Manager:
                 #     ts_start = datetime.now()
 
                 # Step 2: обработка файлов пакета (загрузка или удаление)
-                self.handle_tasks(tasks)
+                self.handle_tasks(tasks, processBar)
 
                 # if self.debug:
                 #     self.logger.debug('start_update: обработка выполнена за {}'.format(datetime.now() - ts_start))
@@ -189,14 +190,21 @@ class Manager:
             try:
                 write_data(LOCAL_INDEX_FILE, jsonify(self.remote_index))
                 write_data(LOCAL_INDEX_FILE_HASH, self.remote_index_hash)
+                self.logger.debug('start_update: индекс зафиксирован локально')
             except Exception as err:
                 raise IndexFixError('Ошибка фиксации данных индекса репозитория') from err
+            else:
+                processBar.SetValue(processBar.GetValue() + 10)
+                if not processBar.GetValue() == processBar.GetRange():
+                    processBar.SetValue(processBar.GetRange())
         finally:
             self._dispatcher_stop()
 
     def reset(self, remote=False):
+        self._tempdir = self._get_temp_dir()
+        self._local_index = None
         self._pack_list = self._get_pack_list(remote)
-        self._info_list = self._get_info_list()
+        self._info_list = self._get_info_list(remote)
 
     @property
     def repo_updated(self) -> bool:
@@ -236,7 +244,7 @@ class Manager:
             self._disp.close()
             self._disp = None
 
-    def _get_info_list(self) -> dict:
+    def _get_info_list(self, remote: bool) -> dict:
         packets_in_repo = None
         remote_index_last_change = None
         repo_updated = None
@@ -247,10 +255,11 @@ class Manager:
         else:
             local_index_last_change = None
 
-        remote_index_last_change = self.remote_index_create_date
-        if remote_index_last_change:
-            packets_in_repo = len(self.remote_index_packages)
-            repo_updated = 'имеются обновления' if self.repo_updated else 'нет обновлений'
+        if remote:
+            remote_index_last_change = self.remote_index_create_date
+            if remote_index_last_change:
+                packets_in_repo = len(self.remote_index_packages)
+                repo_updated = 'имеются обновления' if self.repo_updated else 'нет обновлений'
 
         info = OrderedDict()
         info.setdefault('Дата последнего обновления', local_index_last_change)
@@ -271,7 +280,6 @@ class Manager:
 
         return info
 
-    # +
     def installed_packages(self) -> Iterator:
         """
         Список установленных пакетов
@@ -303,7 +311,7 @@ class Manager:
             except LinkUpdateError:
                 self.logger.error('ошибка удаления ярлыка для {}'.format(pack))
 
-            processBar.SetValue(processBar.GetValue() + 1)
+            processBar.SetValue(processBar.GetValue() + 10)
 
     def set_full(self, value=False):
         self._full = value
@@ -317,9 +325,10 @@ class Manager:
                     self._disp.get_file(INDEX_FILE_NAME, fp)
                 except FileNotFoundError:
                     raise NoIndexFileOnServerError
-                except AttributeError:  # диспетчер не активирован
-                    return {}
-            self._remote_index = unjsonify(gzread(fp, encode=DEFAULT_ENCODING))
+                except (RepoIsBusy, AttributeError):
+                    self._remote_index = {}
+                else:
+                    self._remote_index = unjsonify(gzread(fp, encode=DEFAULT_ENCODING))
         return self._remote_index
 
     @property
@@ -345,10 +354,7 @@ class Manager:
     @property
     def remote_index_create_date(self):
         stamp = self.remote_index_meta.get('stamp')
-        if stamp:
-            return datetime.fromtimestamp(float(stamp)).strftime('%d-%m-%Y %H:%M:%S')
-        else:
-            return None
+        return datetime.fromtimestamp(float(stamp)).strftime('%d-%m-%Y %H:%M:%S') if stamp else None
 
     @property
     def local_index(self) -> dict:
@@ -529,7 +535,7 @@ class Manager:
                     self.logger.debug('get_task: local индекс: {}'.format(l_index))
                 else:
                     raise IndexError('Что-то пошло не так с индексами, при проходе списков файлов на обработку')
-            processBar.SetValue(processBar.GetValue() + 1)
+            # processBar.SetValue(processBar.GetValue() + 1)
 
     def _build_task(self, package, file, action, hash=None) -> (namedtuple, int):
         if action == State.DEL:
@@ -541,10 +547,11 @@ class Manager:
         task = Task(package, action, src, dst, hash)
         return task, id(task)
 
-    def handle_tasks(self, tasks):
+    def handle_tasks(self, tasks, processBar):
         """Получить новые файлы из репозитория или удалить локально старые"""
         main_queue = Queue(maxsize=QUEUEMAXSIZE)
         exc_queue = Queue()
+        size_queue = Queue()
         stopper = threading.Event()
         workers = []
         self.logger.debug('handle_tasks: подготовка `пчелок`')
@@ -555,7 +562,7 @@ class Manager:
                                         logger=self.logger,
                                         tempdir=self._tempdir)
             self.logger.debug('handle_tasks: диспетчер `{}` готов'.format(dispatcher))
-            worker = Worker(main_queue, stopper, dispatcher, logger=self.logger, exc_queue=exc_queue)
+            worker = Worker(main_queue, stopper, dispatcher, logger=self.logger, exc_queue=exc_queue, size_queue=size_queue)
             worker.setName('{}'.format(worker))
             worker.setDaemon(True)
             workers.append(worker)
@@ -572,6 +579,10 @@ class Manager:
                 if stopper.is_set():  # worker дернул стоп-кран
                     raise InterruptedError
 
+                if size_queue.qsize() > 0:
+                    size = size_queue.get_nowait()
+                    processBar.SetValue(processBar.GetValue() + size)
+
                 if not main_queue.full():
                     task = next(tasks)
                     task_id = id(task)
@@ -586,6 +597,12 @@ class Manager:
             for worker in workers:
                 if worker.isAlive():
                     worker.join()
+            try:
+                for i in range(size_queue.qsize()):
+                    size = size_queue.get_nowait()
+                    processBar.SetValue(processBar.GetValue() + size)
+            except Empty:
+                pass
 
         finally:
             if exc_queue.qsize():
@@ -593,7 +610,7 @@ class Manager:
                 for _ in range(exc_queue.qsize()):
                     exc = exc_queue.get()  # type: Exception
                     self.logger.error(exc)
-                raise InterruptedError
+                raise exc
 
         self.logger.debug('handle_tasks: очередь обработана')
         # end up
@@ -632,7 +649,7 @@ class Manager:
             else:
                 self.logger.debug('install_packets: `{}` перемещен из буфера в {}'.format(package, dst))
 
-            processBar.SetValue(processBar.GetValue() + 1)
+            processBar.SetValue(processBar.GetValue() + 10)
         self.clean_buffer()
 
     def update_links(self):
@@ -722,6 +739,13 @@ class Manager:
             self._tempdir.cleanup()
         return TemporaryDirectory(prefix='tmp_mngr_', dir=os.path.expandvars('%TEMP%'))
 
+    def _calc_packets_size(self, packs_handle: list) -> int:
+        r_packs = self.remote_index_packages
+        size = 0
+        for _, data in packs_handle:
+            size += r_packs[data.origin]['size']
+        return size
+
 
 class Worker(threading.Thread):
     max_repeat = 3
@@ -730,6 +754,7 @@ class Worker(threading.Thread):
                  logger=None, *args, **kwargs):
         self.queue = queue
         self.exc_queue = kwargs.pop('exc_queue')  # type: Queue
+        self.size_queue = kwargs.pop('size_queue')  # type: Queue
         self.dispatcher = dispatcher
         self.logger = logger or get_stdout_logger()
         self.stopper = stopper
@@ -748,7 +773,7 @@ class Worker(threading.Thread):
 
                 if self.dispatcher.repo_is_busy():
                     self.stopper.set()
-                    self.exc_queue.put(InterruptedError('Репозиторий заблокирован'))
+                    self.exc_queue.put(RepoIsBusy)
                     return
 
                 task = self.queue.get(timeout=1)
@@ -767,6 +792,7 @@ class Worker(threading.Thread):
                 if os.path.exists(task.dst) and os.path.isfile(task.dst) and file_hash_calc(task.dst) == task.hash:
                     self.logger.debug('worker {}: <{}> обнаружен загруженный файл в буфере {}, пропуск'.format(
                         self, task_id, task.dst))
+                    self.size_queue.put(os.path.getsize(task.dst))
                     self.queue.task_done()
                     continue
 
@@ -776,6 +802,8 @@ class Worker(threading.Thread):
                     self.logger.debug('worker {}: <{}> файл {} загружен в буфер'.format(self, task_id, task.dst))
 
                     hash_sum = file_hash_calc(task.dst)
+                    if fault_count == 0:
+                        self.size_queue.put(os.path.getsize(task.dst))
 
                     if not hash_sum == task.hash:
                         fault_count += 1

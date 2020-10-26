@@ -246,6 +246,7 @@ class MainFrame(fmMain):
             self.checked = True
             self.logger.info(e)
         except RepoIsBusy as e:
+            self.on_reset(None)
             self.logger.error(e)
         except Exception as e:
             self.logger.error('Ошибка при получении информации об обновлении: {}'.format(e))
@@ -265,6 +266,8 @@ class MainFrame(fmMain):
             self.manager.start_update(self.processBar)
         except InterruptedError:
             return
+        except RepoIsBusy:
+            self.on_reset(None)
         except Exception as e:
             self.logger.error(e)
             if self.debug:
