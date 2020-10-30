@@ -15,13 +15,11 @@ class NoUpdates(BaseManagerError):
 
 
 class DispatcherNotActivated(BaseManagerError):
-    def __str__(self):
-        return 'Диспетчер не активирован'
+    pass
 
 
 class DispatcherActivationError(BaseManagerError):
-    def __str__(self):
-        return 'Ошибка активации диспетчера'
+    pass
 
 
 class PacketInstallError(BaseManagerError):

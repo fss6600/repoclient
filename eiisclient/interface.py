@@ -57,6 +57,7 @@ class MainFrame(fmMain):
         self.wxStatusBar.SetStatusText('Обновление ЕИИС "Соцстрах". Версия: {}'.format(__version__), 2)
 
         self.manager = Manager(logger=self.logger)
+        self.wxPackList.Disable()
         self.refresh_gui()
         self.processBar.SetValue(0)
         self.Show()
@@ -112,6 +113,7 @@ class MainFrame(fmMain):
     def on_reset(self, event):
         self.manager.reset()
         self.btUpdate.Disable()
+        self.wxPackList.Disable()
         self.menuService.Enable(id=self.menuUpdate.GetId(), enable=False)
         self.processBar.SetValue(0)
         self.refresh_gui()
@@ -255,8 +257,8 @@ class MainFrame(fmMain):
         else:
             self.checked = True
         finally:
-            self.activate_interface()
             self.refresh_gui()
+            self.activate_interface()
             self.logger.info('--\n')
 
     def do_update(self):
@@ -276,7 +278,6 @@ class MainFrame(fmMain):
         else:
             self.logger.info('Обновление завершено')
         finally:
-            self.manager.reset(remote=True)
             self.refresh_gui()
             self.activate_interface()
             self.logger.info('--\n')
@@ -384,6 +385,7 @@ class ConfigFrame(fmConfig):
                 except FileNotFoundError as err:
                     self.mframe.logger.debug(err)
             write_data(CONFIGFILE, jsonify(self.config))
+            self.mframe.manager.init_dispatcher()
             self.mframe.on_reset(None)
             self.mframe.logger.info('Настройки применены')
             self.mframe.logger.info('--\n')
