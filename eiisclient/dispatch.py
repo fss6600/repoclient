@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
+import locale
 import logging
 import os
 import re
 import shutil
-import weakref
-import locale
+from ftplib import error_temp
 
 from eiisclient import DEFAULT_ENCODING
-from eiisclient.exceptions import DispatcherActivationError, DispatcherNotActivated
-from ftplib import error_temp
+from eiisclient.exceptions import DispatcherActivationError
 
 BUSYMESSAGE = '__REGLAMENT__'
 
 
 class BaseDispatcher(object):
     """"""
+
     def __init__(self, *args, **kwargs):
         self._repo = None
         self._tempdir = kwargs.get('tempdir')
@@ -64,6 +64,7 @@ class BaseDispatcher(object):
 
 class FileDispatcher(BaseDispatcher):
     """Local repo диспетчер"""
+
     def __init__(self, repo, *args, **kwargs):
         """"""
         super(FileDispatcher, self).__init__(*args, **kwargs)
@@ -89,7 +90,7 @@ class FileDispatcher(BaseDispatcher):
         try:
             os.stat(self._repo)
         except Exception as e:
-            raise DispatcherActivationError('Ошибка активации диспетчера: {}'. format(e))
+            raise DispatcherActivationError('Ошибка активации диспетчера: {}'.format(e))
 
     def repo_is_busy(self):
         return BUSYMESSAGE in os.listdir(self.repopath)
@@ -97,12 +98,14 @@ class FileDispatcher(BaseDispatcher):
 
 class SMBDispatcher(FileDispatcher):
     """SMB диспетчер"""
+
     def __repr__(self):
         return '<SMB Dispatcher-{}>'.format(id(self))
 
 
 class FTPDispatcher(BaseDispatcher):
     """FTP диспетчер"""
+
     def __init__(self, repo, *args, **kwargs):
 
         super(FTPDispatcher, self).__init__(*args, **kwargs)
@@ -113,9 +116,7 @@ class FTPDispatcher(BaseDispatcher):
         self.password = None
         self._repo = None
         self._ftp = None
-
         self._parse_url_data(repo)
-        self._finalizer = weakref.finalize(self, self.down)
 
     def __repr__(self):
         return 'FTP Dispatcher  <{}> on <{}{}>'.format(id(self), self.hostname, self.repopath)
@@ -127,9 +128,9 @@ class FTPDispatcher(BaseDispatcher):
         if self._ftp is not None:
             try:
                 self._ftp.quit()
-            except Exception:
+                self._ftp = None
+            except:
                 pass
-            self._finalizer.detach()
 
     def check(self):
         """"""
@@ -153,7 +154,6 @@ class FTPDispatcher(BaseDispatcher):
         self._repo = data.path or '/'
 
     def _get_connection(self):
-        """"""
         from ftplib import FTP
         ftp = FTP()
         ftp.encoding = self.ftpencode
@@ -193,8 +193,6 @@ class Dispatcher(object):
 
     def __new__(cls, *args, **kwargs):
         value = args[0].strip('\'').strip('"')
-        if not value:
-            raise DispatcherNotActivated('Не указан путь к репозиторию')
         if re.match(r'[Ff][Tt][Pp]://([\w.-]+:\w+@)?.*', value):
             return FTPDispatcher(*args, **kwargs)
         elif re.match(r'[A-Za-z]:\\(((\w+)(\\?))+)?', value):
@@ -202,7 +200,7 @@ class Dispatcher(object):
         elif re.match(r'\\\\[\w.-]+\\\w+((\\)?(\w+)(\\)?)+', value):
             return SMBDispatcher(*args, **kwargs)
         else:
-            raise ValueError('Не определен тип репозитория: <{}>'.format(value))
+            return None
 
 
 def get_dispatcher(repo, *args, **kwargs):
