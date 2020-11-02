@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 from ftplib import error_temp
+from time import sleep
 
 from eiisclient import DEFAULT_ENCODING
 from eiisclient.exceptions import DispatcherActivationError
@@ -36,8 +37,8 @@ class BaseDispatcher(object):
     def down(self):
         pass
 
-    def check(self):
-        pass
+    # def check(self):
+    #     pass
 
     @property
     def repopath(self):
@@ -122,7 +123,10 @@ class FTPDispatcher(BaseDispatcher):
         return 'FTP Dispatcher  <{}> on <{}{}>'.format(id(self), self.hostname, self.repopath)
 
     def up(self):
+        if self._ftp:
+            self._ftp = None
         self._ftp = self._get_connection()
+        sleep(.2)
 
     def down(self):
         if self._ftp is not None:
@@ -132,17 +136,17 @@ class FTPDispatcher(BaseDispatcher):
             except:
                 pass
 
-    def check(self):
-        """"""
-        try:
-            self._ftp.sendcmd('NOOP')
-        except ConnectionAbortedError:
-            self.up()
-        except error_temp as err:
-            if err.args[0].startswith('42'):  # ошибка управляющего соединения
-                self.up()
-            else:
-                raise DispatcherActivationError from err
+    # def check(self):
+    #     """"""
+    #     try:
+    #         self._ftp.sendcmd('NOOP')
+    #     except ConnectionAbortedError:
+    #         self.up()
+    #     except error_temp as err:
+    #         if err.args[0].startswith('42'):  # ошибка управляющего соединения
+    #             self.up()
+    #         else:
+    #             raise DispatcherActivationError from err
 
     def _parse_url_data(self, repo_string):
         """"""
@@ -172,20 +176,29 @@ class FTPDispatcher(BaseDispatcher):
     def get_file(self, src: str, dst: str) -> str:
         src_path = self._sanitize_path(os.path.join(self.repopath, src))
 
-        self.check()
         dst_dir = os.path.dirname(dst)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir, exist_ok=True)
 
+        # self.check()
         with open(dst, 'wb') as fp:
             try:
                 self._ftp.retrbinary('RETR {}'.format(src_path), callback=fp.write)
-            except Exception as err:
-                raise IOError(err)
+            except Exception:
+                try:
+                    self.up()
+                    self._ftp.retrbinary('RETR {}'.format(src_path), callback=fp.write)
+                except Exception as err:
+                    raise IOError(err)
         return dst
 
     def repo_is_busy(self):
-        return BUSYMESSAGE in (fname for fname, _ in self._ftp.mlsd(self.repopath))
+        try:
+            listdir = list(self._ftp.mlsd(self.repopath))
+        except Exception:
+            self.up()
+            listdir = list(self._ftp.mlsd(self.repopath))
+        return BUSYMESSAGE in (fname for fname, _ in listdir)
 
 
 class Dispatcher(object):
