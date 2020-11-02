@@ -115,6 +115,7 @@ class Manager:
         return self._info_list
 
     def check_updates(self, processBar):
+        processBar.SetRange(100)
         processBar.SetValue(0)
 
         self._local_index = None
@@ -450,11 +451,11 @@ class Manager:
 
         # обновляем статус установки имеющихся пакетов
         for origin_pack_name in self.installed_packages():
-            pack, pack_data = pack_list.get_by_origin(origin_pack_name)
+            _, pack_data = pack_list.get_by_origin(origin_pack_name)
             if pack_data:
                 setattr(pack_data, 'installed', True)
                 setattr(pack_data, 'checked', True)
-                if pack not in local_index_packages:
+                if pack_data.origin not in local_index_packages and pack_data.checked:
                     setattr(pack_data, 'status', State.UPD)  # установлен - обновляем
             else:
                 pack_list[origin_pack_name] = PackData(
@@ -677,7 +678,6 @@ class Manager:
                 self.logger.debug('install_packets: `{}` перемещен из буфера в {}'.format(package, dst))
 
             processBar.SetValue(processBar.GetValue() + self._progressBarStep)
-        self.clean_buffer()
 
     def update_links(self):
         self.logger.info('Обновление ярлыков на рабочем столе')
@@ -791,7 +791,6 @@ class Worker(threading.Thread):
     def __repr__(self):
         return 'WRK{}'.format(id(self))
 
-    # +
     def run(self):
         try:
             while True:
