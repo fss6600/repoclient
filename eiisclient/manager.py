@@ -10,7 +10,6 @@ from collections.abc import Iterable, Iterator
 from datetime import datetime
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
-from time import sleep
 
 import pythoncom
 import winshell
@@ -63,9 +62,11 @@ class Manager:
     """
     Основной обработчик пакетов на клиенте.
     """
+
     def __init__(self, logger=None, **kwargs):
         # инициализация параметров
         self.debug = False
+        self.checked = False
         self.logger = logger or get_stdout_logger()
         self.disp = None  # type: BaseDispatcher
         self.config = get_config()
@@ -94,7 +95,9 @@ class Manager:
             self.logger.debug('{}: task_k: {}'.format(self, self._task_queue_k))
 
         self._pack_list = self._get_pack_list(remote=False)  # type: PackList # - перечень пакетов со статусами
-        self._info_list = self._get_info_list(remote=False)  # type: dict # - информация о репозитории, установленных пакетах,..
+        self._info_list = self._get_info_list(remote=False)  # type: dict # - информация о репозитории, пакетах,..
+
+        self._progressBarStep = 10
 
     def __repr__(self):
         return '<Manager: {}>'.format(id(self))
@@ -114,9 +117,10 @@ class Manager:
     def check_updates(self, processBar):
         processBar.SetValue(0)
 
-        self._remote_index = None
         self._local_index = None
         self._pack_list = self._get_pack_list(remote=False)
+
+        self._check_disp()
 
         with self.disp:
             self.disp.up()
@@ -128,8 +132,10 @@ class Manager:
             if not self.repo_updated:
                 self._info_list = self._get_info_list(remote=True)
                 processBar.SetValue(100)
+                self.checked = True
                 raise NoUpdates
 
+            self._remote_index = None
             remove(os.path.join(self._tempdir.name, INDEX_FILE_NAME))
             self.logger.info('Чтение данных репозитория')
             try:
@@ -142,7 +148,9 @@ class Manager:
                 processBar.SetValue(70)
             finally:
                 self.logger.debug('check_updates: деактивация диспетчера')
-                processBar.SetValue(100)
+                if not processBar.GetValue() == processBar.GetRange():
+                    processBar.SetValue(processBar.GetRange())
+            self.checked = True
 
     def start_update(self, processBar):
         """
@@ -150,13 +158,11 @@ class Manager:
 
         :return:
         """
-        processBar.SetValue(0)
-        try:
-            self.disp.up()
-            if self.disp.repo_is_busy():
-                raise RepoIsBusy
+        self._check_disp()
 
-            # 1 обновление/удаление пакетов
+        processBar.SetValue(0)
+        with self.disp:
+            self.disp.up()
             self.logger.info('Формирование списка пакетов')
             action_list = {}
             for pack, data in self._pack_list.items():
@@ -170,14 +176,37 @@ class Manager:
 
             packs_handle = action_list.get('update', [])
             packs_delete = action_list.get('delete', [])
-            packets_size = self._calc_packets_size(packs_handle)
-            processBar.SetRange(packets_size + len(packs_handle) * 10 + len(packs_delete) * 10 + 10)
 
+            packets_size = self._calc_packets_size(packs_handle)
+            packs_handle_count = len(packs_handle) or 1
+            packs_handle_delete = len(packs_delete)
+            self._progressBarStep = (packets_size / packs_handle_count) / 10 if packets_size else 10
+            progress_bar_range = self._progressBarStep + \
+                                 packets_size + \
+                                 packs_handle_count * self._progressBarStep + \
+                                 packs_handle_delete * self._progressBarStep
+            processBar.SetRange(int(progress_bar_range))
+
+            # 2 удаление пакетов
+            if packs_delete:
+                self.delete_packages(packs_delete, processBar)
+
+            if self.disp.repo_is_busy():
+                raise RepoIsBusy
+
+            if not self.checked:
+                self._pack_list = self._get_pack_list(remote=True)
+                self._info_list = self._get_info_list(remote=True)
+                self.logger.error('Требуется проверка наличия обновлений')
+                self.logger.info('--\n')
+                return
+
+            # 1 обновление/удаление пакетов
             if packs_handle:
                 self.logger.debug('start_update: активация диспетчера')
                 # Step 1: формирование задач для обработки файлов пакетов из репозитория
                 tasks = self.get_task(packs_handle)
-
+                processBar.SetValue(self._progressBarStep)
                 # Step 2: обработка файлов пакета (загрузка или удаление)
                 self.handle_tasks(tasks, processBar)
 
@@ -188,10 +217,6 @@ class Manager:
             else:
                 self.logger.info('Нет пакетов для установки или обновления')
 
-            # 2 удаление пакетов
-            if packs_delete:
-                self.delete_packages(packs_delete, processBar)
-
             # 3 фиксация данных индекса репозитория
             try:
                 write_data(LOCAL_INDEX_FILE, jsonify(self.remote_index))
@@ -200,16 +225,15 @@ class Manager:
             except Exception as err:
                 raise IndexFixError('Ошибка фиксации данных индекса репозитория') from err
             else:
-                processBar.SetValue(processBar.GetValue() + 10)
+                processBar.SetValue(processBar.GetValue() + self._progressBarStep)
                 if not processBar.GetValue() == processBar.GetRange():
                     processBar.SetValue(processBar.GetRange())
 
                 self._pack_list = self._get_pack_list(remote=True)
                 self._info_list = self._get_info_list(remote=True)
-        finally:
-            self.disp.down()
 
     def reset(self, remote=False):
+        self.checked = False
         self._tempdir = self._get_temp_dir()
         self._local_index = None
         self._pack_list = self._get_pack_list(remote)
@@ -237,6 +261,12 @@ class Manager:
         self.disp = get_dispatcher(self.config.repopath, logger=self.logger, encode=self.config.encode,
                                    ftpencode=self.config.ftpencode, tempdir=self._tempdir)
 
+    def _check_disp(self):
+        if self.disp is None:
+            if not self.config.repopath:
+                raise DispatcherNotActivated('Не указан путь к репозиторию')
+            self.init_dispatcher()
+
     def _get_info_list(self, remote: bool) -> dict:
         repo_updated = None
         local_index_last_change = None
@@ -256,7 +286,8 @@ class Manager:
         info = OrderedDict()
         info.setdefault('Дата последнего обновления', local_index_last_change)
         info.setdefault('Дата обновления на сервере', index_last_change)
-        info.setdefault('Наличие обновлений', {True: 'имеются обновления', False: 'нет обновлений', None: '-'}[repo_updated])
+        info.setdefault('Наличие обновлений',
+                        {True: 'имеются обновления', False: 'нет обновлений', None: '-'}[repo_updated])
         info.setdefault('Пакетов в репозитории', packets_in_repo)
         info.setdefault('Установлено подсистем', len(list(self.installed_packages())))
 
@@ -305,7 +336,7 @@ class Manager:
             except LinkUpdateError:
                 self.logger.error('ошибка удаления ярлыка для {}'.format(pack))
 
-            processBar.SetValue(processBar.GetValue() + 10)
+            processBar.SetValue(processBar.GetValue() + self._progressBarStep)
 
     def set_full(self, value=False):
         self._full = value
@@ -340,7 +371,6 @@ class Manager:
             try:
                 self.disp.get_file(INDEX_HASH_FILE_NAME, fp)
             except AttributeError:  # диспетчер не активирован
-                # return None
                 raise DispatcherNotActivated('диспетчер не активирован')
             except FileNotFoundError:
                 raise NoIndexFileOnServerError('Не найден файл хэш-суммы индекса')
@@ -390,7 +420,6 @@ class Manager:
                     if not local_pack_hash == remote_pack_hash:
                         status = State.UPD
 
-                    # помечаем пакет на удаление, если алиасы отличаются - сменился на сервере !!!! - пересмотреть
                     local_pack_alias = local_index_packages[origin_pack_name]['alias']
                     remote_pack_alias = remote_index_packages[origin_pack_name]['alias']
                     if not local_pack_alias == remote_pack_alias:
@@ -421,10 +450,12 @@ class Manager:
 
         # обновляем статус установки имеющихся пакетов
         for origin_pack_name in self.installed_packages():
-            _, pack_data = pack_list.get_by_origin(origin_pack_name)
+            pack, pack_data = pack_list.get_by_origin(origin_pack_name)
             if pack_data:
                 setattr(pack_data, 'installed', True)
                 setattr(pack_data, 'checked', True)
+                if pack not in local_index_packages:
+                    setattr(pack_data, 'status', State.UPD)  # установлен - обновляем
             else:
                 pack_list[origin_pack_name] = PackData(
                     origin=origin_pack_name,
@@ -529,7 +560,6 @@ class Manager:
                     self.logger.debug('get_task: local индекс: {}'.format(l_index))
                 else:
                     raise IndexError('Что-то пошло не так с индексами, при проходе списков файлов на обработку')
-            # processBar.SetValue(processBar.GetValue() + 1)
 
     def _build_task(self, package, file, action, hash=None) -> (namedtuple, int):
         if action == State.DEL:
@@ -556,7 +586,8 @@ class Manager:
                                         logger=self.logger,
                                         tempdir=self._tempdir)
             self.logger.debug('handle_tasks: диспетчер `{}` готов'.format(dispatcher))
-            worker = Worker(main_queue, stopper, dispatcher, logger=self.logger, exc_queue=exc_queue, size_queue=size_queue)
+            worker = Worker(main_queue, stopper, dispatcher, logger=self.logger, exc_queue=exc_queue,
+                            size_queue=size_queue)
             worker.setName('{}'.format(worker))
             worker.setDaemon(True)
             workers.append(worker)
@@ -601,6 +632,7 @@ class Manager:
         finally:
             if exc_queue.qsize():
                 self.logger.debug('выгрузка исключений из очереди')
+                exc = None
                 for _ in range(exc_queue.qsize()):
                     exc = exc_queue.get()  # type: Exception
                     self.logger.error(exc)
@@ -644,7 +676,7 @@ class Manager:
             else:
                 self.logger.debug('install_packets: `{}` перемещен из буфера в {}'.format(package, dst))
 
-            processBar.SetValue(processBar.GetValue() + 10)
+            processBar.SetValue(processBar.GetValue() + self._progressBarStep)
         self.clean_buffer()
 
     def update_links(self):
@@ -706,7 +738,7 @@ class Manager:
             if self.debug:
                 self.logger.exception(err)
             return False
-        # self.reset()
+        self._info_list = self._get_info_list(remote=False)
         return True
 
     def _get_link_data(self, packet) -> tuple:
