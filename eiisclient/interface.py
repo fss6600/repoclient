@@ -12,11 +12,11 @@ import wx.dataview as dv
 from eiisclient import (__version__, __email__, __division__, __author__,
                         PROFILE_INSTALL_PATH, DEFAULT_INSTALL_PATH,
                         WORK_DIR, DEFAULT_ENCODING, CONFIGFILE)
-from eiisclient.structures import State
 from eiisclient.exceptions import RepoIsBusy, NoUpdates
-from eiisclient.manager import Manager
 from eiisclient.functions import hash_calc, jsonify, write_data
 from eiisclient.gui.MainFrame import fmMain, fmConfig
+from eiisclient.manager import Manager
+from eiisclient.structures import State
 
 # colors
 PCK_NEW = wx.Colour(210, 240, 250, 0)  # новый пакет - нет локально, есть в репозитории
@@ -47,6 +47,7 @@ class MainFrame(fmMain):
         # инициализация интерфейса
         self.wxLogView.Clear()
         self.wxPackList.Clear()
+        self.btUpdate.Enable(True)
 
         col_01 = dv.DataViewColumn('', dv.DataViewTextRenderer(), 0, align=0, width=250, flags=1)
         col_02 = dv.DataViewColumn('', dv.DataViewTextRenderer(), 1, align=0, width=450, flags=0)
@@ -57,7 +58,6 @@ class MainFrame(fmMain):
         self.wxStatusBar.SetStatusText('Обновление ЕИИС "Соцстрах". Версия: {}'.format(__version__), 2)
 
         self.manager = Manager(logger=self.logger)
-        self.wxPackList.Disable()
         self.refresh_gui()
         self.processBar.SetValue(0)
         self.Show()
@@ -71,7 +71,7 @@ class MainFrame(fmMain):
         thread.setName('Manager')
         thread.start()
 
-    def on_pack_list_item_select( self, event ):
+    def on_pack_list_item_select(self, event):
         pack_name = self.wxPackList.GetString(event.Selection)
         info = '{} [{}]'.format(pack_name, self.manager.pack_list[pack_name].origin)
         self.wxStatusBar.SetStatusText(info)
@@ -112,9 +112,6 @@ class MainFrame(fmMain):
 
     def on_reset(self, event):
         self.manager.reset()
-        self.btUpdate.Disable()
-        self.wxPackList.Disable()
-        self.menuService.Enable(id=self.menuUpdate.GetId(), enable=False)
         self.processBar.SetValue(0)
         self.refresh_gui()
 
@@ -172,7 +169,7 @@ class MainFrame(fmMain):
             if self.debug:
                 self.logger.exception(err)
 
-    def on_pack_list_item_toggled( self, event ):
+    def on_pack_list_item_toggled(self, event):
         self._pack_list_toggle_item(event.Selection)
 
     def _pack_list_toggle_item(self, item_id):
@@ -198,9 +195,8 @@ class MainFrame(fmMain):
         """активация элементов интерфейса"""
         self.logger.debug('активация элементов интерфейса')
         self.wxPackList.Enable()
-        if self.checked:
-            self.btUpdate.Enable()
-            self.menuService.Enable(id=self.menuUpdate.GetId(), enable=True)
+        self.btUpdate.Enable()
+        self.menuService.Enable(id=self.menuUpdate.GetId(), enable=True)
         self.btCheck.Enable()
         self.btRefresh.Enable()
         self.menuFile.Enable(id=self.menuitemUpdate.GetId(), enable=True)
@@ -245,7 +241,6 @@ class MainFrame(fmMain):
             self.deactivate_interface()
             self.manager.check_updates(self.processBar)
         except NoUpdates as e:
-            self.checked = True
             self.logger.info(e)
         except RepoIsBusy as e:
             self.on_reset(None)
@@ -255,7 +250,7 @@ class MainFrame(fmMain):
             if self.debug:
                 self.logger.exception(e)
         else:
-            self.checked = True
+            pass
         finally:
             self.refresh_gui()
             self.activate_interface()
@@ -268,8 +263,9 @@ class MainFrame(fmMain):
             self.manager.start_update(self.processBar)
         except InterruptedError:
             return
-        except RepoIsBusy:
+        except RepoIsBusy as e:
             self.on_reset(None)
+            self.logger.error(e)
         except Exception as e:
             self.logger.error(e)
             if self.debug:
@@ -323,6 +319,7 @@ class MainFrame(fmMain):
 
 class ConfigFrame(fmConfig):
     """"""
+
     def __init__(self, mframe: MainFrame, *args, **kwargs):
         super(ConfigFrame, self).__init__(*args, **kwargs)
         self.config = mframe.manager.config
@@ -427,4 +424,3 @@ class WxLogHandler(logging.StreamHandler):
             raise
         except Exception:
             self.handleError(record)
-
