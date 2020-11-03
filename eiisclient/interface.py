@@ -325,14 +325,16 @@ class ConfigFrame(fmConfig):
         self.config = mframe.manager.config
         self.mframe = mframe
         self.config_hash = hash_calc(self.config)
-        self.install_to_profile = self.config.install_to_profile
-        self.eiis_path = PROFILE_INSTALL_PATH if self.install_to_profile else DEFAULT_INSTALL_PATH
+        self._install_to_profile = self.config.install_to_profile
+        self._links_in_dirs = self.config.links_in_dir
+        self.eiis_path = PROFILE_INSTALL_PATH if self._install_to_profile else DEFAULT_INSTALL_PATH
         self.wxRepoPath.Value = self.config.repopath or ''
         self.wxInstallToUserProfile.SetValue(self.config.install_to_profile)
-        if self.config.install_to_profile:  # путь установки
+        if self._install_to_profile:  # путь установки
             self.wxEiisInstallPath.SetPath(PROFILE_INSTALL_PATH)
         else:
             self.wxEiisInstallPath.SetPath(DEFAULT_INSTALL_PATH)
+        self.wxLinksInDir.Value = self.config.links_in_dir
         self.wxEiisInstallPath.Enable(False)
         self.wxThreadsCount.Select(self.config.threads - 1)
         self.wxFTPEncode.SetValue(self.config.ftpencode)
@@ -357,10 +359,11 @@ class ConfigFrame(fmConfig):
         self.config.install_to_profile = self.wxInstallToUserProfile.GetValue()
         self.config.threads = int(self.wxThreadsCount.Selection) + 1
         self.config.ftpencode = self.wxFTPEncode.GetValue().upper()
+        self.config.links_in_dir = self.wxLinksInDir.GetValue()
 
         #  write_data to file if changed
         if not hash_calc(self.config) == self.config_hash:
-            if not self.config.install_to_profile == self.install_to_profile:
+            if not self.config.install_to_profile == self._install_to_profile:
                 try:
                     packages = os.listdir(self.eiis_path)
                     if packages:
@@ -381,6 +384,13 @@ class ConfigFrame(fmConfig):
                                         'Не достаточно прав доступа или не закрыты файлы подсистемы')
                 except FileNotFoundError as err:
                     self.mframe.logger.debug(err)
+
+            if not self._links_in_dirs == self.config.links_in_dir:
+                try:
+                    self.mframe.manager.update_links()
+                except FileNotFoundError as err:
+                    self.mframe.logger.debug(err)
+            # fix config
             write_data(CONFIGFILE, jsonify(self.config))
             self.mframe.manager.init_dispatcher()
             self.mframe.on_reset(None)

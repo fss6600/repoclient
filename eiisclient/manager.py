@@ -29,6 +29,7 @@ LOCAL_INDEX_FILE = os.path.normpath(os.path.join(WORK_DIR, 'index.json'))
 LOCAL_INDEX_FILE_HASH = '{}.sha1'.format(LOCAL_INDEX_FILE)
 INDEX_FILE_NAME = 'Index.gz'
 INDEX_HASH_FILE_NAME = 'Index.gz.sha1'
+LINKSDIRNAME = 'ЕИИС Соцстрах'
 
 
 def get_stdout_logger() -> logging.Logger:
@@ -42,6 +43,7 @@ def get_config() -> ConfigDict:
         encode=DEFAULT_ENCODING,
         ftpencode=DEFAULT_FTP_ENCODING,
         install_to_profile=False,
+        links_in_dir=False,
     )
 
 
@@ -332,7 +334,7 @@ class Manager:
 
             # удаление ярлыка подсистемы
             try:
-                self._remove_shortcut(pack)
+                self._remove_shortcut(pack, in_dir=self.config.links_in_dir)
                 self.logger.debug('delete_packages: удален ярлык для {}'.format(pack))
             except LinkUpdateError:
                 self.logger.error('ошибка удаления ярлыка для {}'.format(pack))
@@ -664,7 +666,7 @@ class Manager:
             try:
                 self.move_package(src, dst)
                 execf = os.path.join(self.eiispath, package, remote_packages[package]['execf'])
-                self._create_shortcut(title, execf)
+                self._create_shortcut(title, execf, in_dir=self.config.links_in_dir)
             except PermissionError as err:
                 raise PacketInstallError('Недостаточно прав на установку пакета '
                                          '{} в {}'.format(package, self.eiispath)) from err
@@ -681,16 +683,27 @@ class Manager:
 
     def update_links(self):
         self.logger.info('Обновление ярлыков на рабочем столе')
+        in_dir =  self.config.links_in_dir
+
+        if in_dir:
+            os.makedirs(os.path.join(self._desktop, LINKSDIRNAME), exist_ok=True)
+
         for packet in self.installed_packages():
+            if in_dir:
+                self._remove_shortcut(packet)  # remove from desktop
+
             try:
                 title, exe_file_path = self._get_link_data(packet)
-                self._create_shortcut(title, exe_file_path)
+                self._create_shortcut(title, exe_file_path, in_dir=in_dir)
             except (LinkDisabled, LinkNoData) as err:
                 self.logger.error('Ярлык не создан {}'.format(err))
             except LinkUpdateError as err:
                 self.logger.error('Ошибка создания ярлыка: {}'.format(err))
 
-    def _create_shortcut(self, title, exe_file_path):
+        if not in_dir:
+            rmtree(os.path.join(self._desktop, LINKSDIRNAME))
+
+    def _create_shortcut(self, title, exe_file_path, in_dir=False):
         """
         Создание ярлыка запуска подсистемы
 
@@ -701,7 +714,8 @@ class Manager:
                 '- недостаточно данных для создания ярлыка для {}. Проверьте реестр подсистем'.format(title))
 
         workdir = os.path.dirname(exe_file_path)
-        lnpath = os.path.join(winshell.desktop(), '{}.lnk'.format(title))
+        path = os.path.join(self._desktop, LINKSDIRNAME) if in_dir else self._desktop
+        lnpath = os.path.join(path, '{}.lnk'.format(title))
 
         try:
             pythoncom.CoInitialize()  # для работы в threads
@@ -716,9 +730,10 @@ class Manager:
         except Exception as err:
             raise LinkUpdateError from err
 
-    def _remove_shortcut(self, pack):
+    def _remove_shortcut(self, pack, in_dir=False):
         title, _ = self._get_link_data(pack)
-        link_path = os.path.join(self._desktop, title + '.lnk')
+        path = os.path.join(self._desktop, LINKSDIRNAME) if in_dir else self._desktop
+        link_path = os.path.join(path, title + '.lnk')
         try:
             remove(link_path)
             self.logger.debug('удален ярлык: {}'.format(link_path))

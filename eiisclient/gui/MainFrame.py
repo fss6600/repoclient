@@ -393,6 +393,14 @@ class fmConfig ( wx.Frame ):
 
         fgSizer1.Add( self.wxFullLinksUpdate, 0, wx.ALL, 5 )
 
+        self.m_staticText9 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Ярлыки в отдельной папке на рабочем столе", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.m_staticText9.Wrap( -1 )
+
+        fgSizer1.Add( self.m_staticText9, 0, wx.ALL, 5 )
+
+        self.wxLinksInDir = wx.CheckBox( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
+        fgSizer1.Add( self.wxLinksInDir, 0, wx.ALL, 5 )
+
         self.m_staticText8 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Кодировка FTP-сервера", wx.DefaultPosition, wx.DefaultSize, 0 )
         self.m_staticText8.Wrap( -1 )
 
