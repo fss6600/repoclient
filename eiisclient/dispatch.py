@@ -37,9 +37,6 @@ class BaseDispatcher(object):
     def down(self):
         pass
 
-    # def check(self):
-    #     pass
-
     @property
     def repopath(self):
         return self._repo
@@ -126,7 +123,7 @@ class FTPDispatcher(BaseDispatcher):
         if self._ftp:
             self._ftp = None
         self._ftp = self._get_connection()
-        sleep(.2)
+        sleep(.1)
 
     def down(self):
         if self._ftp is not None:
@@ -135,18 +132,6 @@ class FTPDispatcher(BaseDispatcher):
                 self._ftp = None
             except:
                 pass
-
-    # def check(self):
-    #     """"""
-    #     try:
-    #         self._ftp.sendcmd('NOOP')
-    #     except ConnectionAbortedError:
-    #         self.up()
-    #     except error_temp as err:
-    #         if err.args[0].startswith('42'):  # ошибка управляющего соединения
-    #             self.up()
-    #         else:
-    #             raise DispatcherActivationError from err
 
     def _parse_url_data(self, repo_string):
         """"""
@@ -180,7 +165,6 @@ class FTPDispatcher(BaseDispatcher):
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir, exist_ok=True)
 
-        # self.check()
         with open(dst, 'wb') as fp:
             try:
                 self._ftp.retrbinary('RETR {}'.format(src_path), callback=fp.write)
