@@ -11,12 +11,13 @@
 
 ;--------------------------------
 XPStyle on
+!define VERSION $%CLIENTVER%
 
 ; The name of the installer
-Name "Клиент обновления ЕИИС Соцстрах"
+Name '"РћР±РЅРѕРІР»РµРЅРёРµ Р•РРРЎ РЎРѕС†СЃС‚СЂР°С…. РљР»РёРµРЅС‚. ${VERSION}"'
 
 ; The file to write
-OutFile "dist\clientup-x32.exe"
+OutFile "dist\clientup-${VERSION}-x86.exe"
 Icon "eiisclient\gui\ico\update-96.ico"
 
 ; Request application privileges for Windows Vista and higher
@@ -28,28 +29,36 @@ LoadLanguageFile "${NSISDIR}\Contrib\Language files\Russian.nlf"
 
 
 ; The default installation directory
-InstallDir "$LocalAppData\Клиент обновления ЕИИС Соцстрах"
+InstallDir "$LocalAppData\РљР»РёРµРЅС‚ РѕР±РЅРѕРІР»РµРЅРёСЏ Р•РРРЎ РЎРѕС†СЃС‚СЂР°С…"
 
 ; Registry key to check for directory (so if you install again, it will
 ; overwrite the old one automatically)
 ;InstallDirRegKey HKLM "Software\NSIS_Example2" "Install_Dir"
 
 ;--------------------------------
-
 ; Pages
 
 Page license
+PageEx custom
+   Caption "Readme"
+   ;SubCaption "TExt"
+PageExEnd
 Page directory
 Page instfiles
 
-BrandingText "Филиал №2 ГУ СРО ФСС РФ\©2020"
+BrandingText "Р¤РёР»РёР°Р» в„–2 Р“РЈ РЎР Рћ Р¤РЎРЎ Р Р¤ | 2020"
 
 ;--------------------------------
-LicenseText "Условия использования программы"
-LicenseData "LICENSE"
+LicenseText "РЈСЃР»РѕРІРёСЏ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ РїСЂРѕРіСЂР°РјРјС‹"
+LicenseData "license.txt"
 
-;Section "License"
-;SectionEnd
+DirText "РџСЂРѕРіСЂР°РјРјР° СѓСЃС‚Р°РЅРѕРІРёС‚ ${NAME} РІРµСЂСЃРёРё ${VERSION} РїРѕ СѓРєР°Р·Р°РЅРЅРѕРјСѓ РїСѓС‚Рё" "РџСѓС‚СЊ СѓСЃС‚Р°РЅРѕРІРєРё (РїРѕ-СѓРјРѕР»С‡Р°РЅРёСЋ РІ РїСЂРѕС„РёР»СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ)"
+
+Section "Custom"
+
+SectionEnd
+
+
 
 ; The stuff to install
 Section ""
@@ -77,10 +86,10 @@ SectionEnd
 ; Optional section (can be disabled by the user)
 Section "Shortcuts"
 
-;  CreateDirectory "$SMPROGRAMS\Обновление ЕИИС"
+;  CreateDirectory "$SMPROGRAMS\РћР±РЅРѕРІР»РµРЅРёРµ Р•РРРЎ"
 ;  CreateShortcut "$SMPROGRAMS\Example2\Uninstall.lnk" "$INSTDIR\uninstall.exe"
-;  CreateShortcut "$SMPROGRAMS\Обновление ЕИИС\Обновление ЕИИС.lnk" "$INSTDIR\eiisclient.exe"
-  CreateShortcut "$DESKTOP\Обновление ЕИИС.lnk" "$INSTDIR\eiisclient.exe"
+;  CreateShortcut "$SMPROGRAMS\РћР±РЅРѕРІР»РµРЅРёРµ Р•РРРЎ\РћР±РЅРѕРІР»РµРЅРёРµ Р•РРРЎ.lnk" "$INSTDIR\eiisclient.exe"
+  CreateShortcut "$DESKTOP\РћР±РЅРѕРІР»РµРЅРёРµ Р•РРРЎ.lnk" "$INSTDIR\eiisclient.exe"
 
 SectionEnd
 

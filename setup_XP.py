@@ -23,15 +23,24 @@ def build_exe():
     pyi = r'C:\Users\mb.petrov.66\workspace\python\eiisrepo\client\.venv\py34\Scripts\pyinstaller.exe'
 
     spec = Path(__file__).parent / 'eiisclient.spec'
-    os.system('{} --clean {}'.format(pyi, spec))
-
+    wd = Path(__file__).parent / 'build' / 'XP'
+    dp = Path(__file__).parent / 'dist' / 'XP'
+    os.system('{} -y --distpath {} --workpath {}  --clean {}'.format(pyi, dp, wd, spec))
 
 def build_doc():
     make_path = Path(__file__).parent / 'docs' / 'make.bat'
     os.system('{} html'.format(make_path))
 
 
+def build_installer():
+    nsis = r'"C:\Program Files (x86)\NSIS\bin\makensis.exe"'
+    spec = Path(__file__).parent / 'eiisclient_mui_XP.nsi'
+    os.environ['CLIENTVER'] = __version__
+    os.system('{} /INPUTCHARSET UTF8 -- {}'.format(nsis, spec))
+
+
 cmd = sys.argv[-1]
+
 
 if cmd == 'exe':
     build_exe()
@@ -39,9 +48,17 @@ if cmd == 'exe':
 elif cmd == 'doc':
     build_doc()
     sys.exit()
+elif cmd == 'ins':
+    build_installer()
+    sys.exit()
+elif cmd == 'bin':
+    build_exe()
+    build_installer()
+    sys.exit()
 elif cmd == 'all':
     build_doc()
     build_exe()
+    build_installer()
     sys.exit()
 
 
@@ -58,7 +75,7 @@ setup(
         ],
     description="Обновление подсистем ЕИИС Соцстрах",
     install_requires=requirements,
-    license="BSD license",
+    license="Apache 2.0 license",
     # long_description=readme + '\n\n' + history,
     include_package_data=True,
     keywords='eiisclient',
