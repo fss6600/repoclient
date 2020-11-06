@@ -225,6 +225,7 @@ class fmMain ( wx.Frame ):
 
         # Connect Events
         self.wxPackList.Bind( wx.EVT_LISTBOX, self.on_pack_list_item_select )
+        self.wxPackList.Bind( wx.EVT_LISTBOX_DCLICK, self.on_pack_list_item_dbl_click )
         self.wxPackList.Bind( wx.EVT_CHECKLISTBOX, self.on_pack_list_item_toggled )
         self.wxPackList.Bind( wx.EVT_ENTER_WINDOW, self.on_pack_list_enter )
         self.wxPackList.Bind( wx.EVT_LEAVE_WINDOW, self.on_pack_list_leave )
@@ -253,6 +254,9 @@ class fmMain ( wx.Frame ):
 
     # Virtual event handlers, overide them in your derived class
     def on_pack_list_item_select( self, event ):
+        pass
+
+    def on_pack_list_item_dbl_click( self, event ):
         pass
 
     def on_pack_list_item_toggled( self, event ):

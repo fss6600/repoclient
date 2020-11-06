@@ -169,6 +169,13 @@ class MainFrame(fmMain):
             if self.debug:
                 self.logger.exception(err)
 
+    def on_pack_list_item_dbl_click(self, event):
+        if self.wxPackList.IsChecked(event.Selection):
+            self.wxPackList.Check(event.Selection, False)
+        else:
+            self.wxPackList.Check(event.Selection, True)
+        self._pack_list_toggle_item(event.Selection)
+
     def on_pack_list_item_toggled(self, event):
         self._pack_list_toggle_item(event.Selection)
 
