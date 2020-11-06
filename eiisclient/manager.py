@@ -209,7 +209,6 @@ class Manager:
                 self.logger.debug('start_update: активация диспетчера')
                 # Step 1: формирование задач для обработки файлов пакетов из репозитория
                 tasks = self.get_task(packs_handle)
-                processBar.SetValue(self._progressBarStep)
                 # Step 2: обработка файлов пакета (загрузка или удаление)
                 self.handle_tasks(tasks, processBar)
 
