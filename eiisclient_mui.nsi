@@ -36,7 +36,7 @@ RequestExecutionLevel user
 ;Interface Settings
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "eiisclient\gui\ico\update-96.ico"
+!define MUI_ICON "gui\img\update-96.ico"
 Unicode True
 BrandingText "Филиал №2 ГУ СРО ФСС РФ | 2020"
 ShowInstDetails show

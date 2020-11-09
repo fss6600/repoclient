@@ -26,7 +26,7 @@ exe = EXE(pyz,
           bootloader_ignore_signals=False,
           strip=False,
           upx=False,
-          icon=r'eiisclient\gui\ico\update-96.ico',
+          icon=r'gui\img\update-96.ico',
           console=False )
 coll = COLLECT(exe,
                a.binaries,

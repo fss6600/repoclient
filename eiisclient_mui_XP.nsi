@@ -28,7 +28,7 @@
 
 ; The file to write
 OutFile "dist\clientup-${VERSION}-XP-x86.exe"
-Icon "eiisclient\gui\ico\update-96.ico"
+Icon "gui\img\update-96.ico"
 
 ; Request application privileges for Windows Vista and higher
 RequestExecutionLevel user
