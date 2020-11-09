@@ -14,9 +14,9 @@ from eiisclient import (__version__, __email__, __division__, __author__,
                         WORK_DIR, DEFAULT_ENCODING, CONFIGFILE)
 from eiisclient.exceptions import RepoIsBusy, NoUpdates
 from eiisclient.functions import hash_calc, jsonify, write_data
-from eiisclient.gui.MainFrame import fmMain, fmConfig
+from eiisclient.mainframe import fmMain, fmConfig, fmRepoPath
 from eiisclient.manager import Manager
-from eiisclient.structures import State
+from eiisclient.structures import State, ConfigDict
 
 # colors
 PCK_NEW = wx.Colour(210, 240, 250, 0)  # новый пакет - нет локально, есть в репозитории
@@ -35,7 +35,6 @@ class MainFrame(fmMain):
         self.debug = args.debug  # type: bool
         self.logger.debug('Инициализация программы')
         super(MainFrame, self).__init__(None)
-
         self.checked = False
         self.pack_action_list = {
             State.UPD: (self.wxPackList.SetItemBackgroundColour, PCK_UPD),
@@ -57,10 +56,13 @@ class MainFrame(fmMain):
         self.wxStatusBar.SetFieldsCount(3, [-1, 300, 250])
         self.wxStatusBar.SetStatusText('Обновление ЕИИС "Соцстрах". Версия: {}'.format(__version__), 2)
 
+        locale = wx.Locale(wx.LANGUAGE_RUSSIAN)
+
+        #
         self.manager = Manager(logger=self.logger)
-        self.refresh_gui()
         self.processBar.SetValue(0)
         self.Show()
+        self.refresh_gui()
 
     def on_check(self, event):
         self.do_updates_check()
@@ -76,12 +78,6 @@ class MainFrame(fmMain):
         info = '{} [{}]'.format(pack_name, self.manager.pack_list[pack_name].origin)
         self.wxStatusBar.SetStatusText(info)
 
-    def on_enter_log_info(self, event):
-        self.wxLogView.SetFocus()
-
-    def on_pack_list_enter(self, event):
-        self.wxPackList.SetFocus()
-
     def on_pack_list_leave(self, event):
         self.wxStatusBar.SetStatusText('')
         try:
@@ -89,9 +85,6 @@ class MainFrame(fmMain):
             self.wxPackList.Deselect(selected)
         except IndexError:
             pass
-
-    def on_enter_view_info(self, event):
-        self.wxInfo.SetFocus()
 
     def on_about(self, event):
         title = 'О программе'
@@ -336,6 +329,8 @@ class ConfigFrame(fmConfig):
         self._links_in_dirs = self.config.links_in_dir
         self.eiis_path = PROFILE_INSTALL_PATH if self._install_to_profile else DEFAULT_INSTALL_PATH
         self.wxRepoPath.Value = self.config.repopath or ''
+        for path in self.config.repopathlist:
+            self.wxRepoPath.Append(path)
         self.wxInstallToUserProfile.SetValue(self.config.install_to_profile)
         if self._install_to_profile:  # путь установки
             self.wxEiisInstallPath.SetPath(PROFILE_INSTALL_PATH)
@@ -355,6 +350,11 @@ class ConfigFrame(fmConfig):
         else:
             self.wxEiisInstallPath.SetPath(DEFAULT_INSTALL_PATH)
 
+    def on_edit_repo_path( self, event ):
+        EditRepoPath(self.config, parent=self).Show()
+
+
+    ###
     def Apply(self, event):
         if not self.wxRepoPath.GetValue():
             wx.MessageBox('Укажите путь к репозиторию',
@@ -367,6 +367,7 @@ class ConfigFrame(fmConfig):
         self.config.threads = int(self.wxThreadsCount.Selection) + 1
         self.config.ftpencode = self.wxFTPEncode.GetValue().upper()
         self.config.links_in_dir = self.wxLinksInDir.GetValue()
+        self.config.repopathlist = [path for path in self.wxRepoPath.GetItems()]
 
         #  write_data to file if changed
         if not hash_calc(self.config) == self.config_hash:
@@ -407,6 +408,65 @@ class ConfigFrame(fmConfig):
 
     def Cancel(self, event):
         self.Destroy()
+
+
+class EditRepoPath(fmRepoPath):
+    def __init__(self, config: ConfigDict, *args, **kwargs):
+        _ = wx.Locale(wx.LANGUAGE_RUSSIAN)
+        self.parent = kwargs['parent']
+        self.config = config
+        super(EditRepoPath, self).__init__(*args, **kwargs)
+        self.lbRepoPathList.ClearAll()
+        self.lbRepoPathList.AppendColumn('Путь к репозиторию', width=self.MaxWidth - 23)
+        self._build_path_list()
+        self.SetLabel('Перечень репозиториев')
+
+    def _build_path_list(self):
+        self.lbRepoPathList.DeleteAllItems()
+        for path in self.config.repopathlist:
+            self.lbRepoPathList.Append((path,))
+
+    def on_add( self, event ):
+        id = self.lbRepoPathList.InsertItem(self.lbRepoPathList.GetItemCount(), '')
+        self.lbRepoPathList.EditLabel(id)
+
+    def on_edit( self, event ):
+        idx = self.lbRepoPathList.GetFocusedItem()
+        self.lbRepoPathList.EditLabel(idx)
+
+    def on_delete( self, event ):
+        idx = self.lbRepoPathList.GetFocusedItem()
+        if not idx == -1:
+            if self.lbRepoPathList.GetItem(idx).Text \
+                and wx.MessageDialog(self, "Удалить '{}'?".format(self.lbRepoPathList.GetItem(idx).Text),
+                                              'Удаление пути репозитория',
+                                              wx.YES_NO|wx.NO_DEFAULT|wx.ICON_QUESTION).ShowModal() == wx.ID_YES:
+                self.lbRepoPathList.DeleteItem(idx)
+            elif not self.lbRepoPathList.GetItem(idx).Text:
+                self.lbRepoPathList.DeleteItem(idx)
+
+    def on_reset( self, event ):
+        self._build_path_list()
+
+    def lbRepoPathListOnListItemActivated( self, event ):
+        print(event.Index)
+        self.lbRepoPathList.EditLabel(event.Index)
+
+
+    def Apply(self, event):
+        old_path = self.parent.wxRepoPath.Value
+        path_list = [self.lbRepoPathList.GetItem(id).Text for id in range(self.lbRepoPathList.GetItemCount())]
+        self.parent.wxRepoPath.Clear()
+        for path in path_list:
+            self.parent.wxRepoPath.Append(path)
+        if old_path in path_list:
+            self.parent.wxRepoPath.Value = old_path
+        self.Exit(None)
+
+    def Exit(self, event):
+        self.Destroy()
+
+
 
 
 def get_logger(func_log_out, debug=False, logfile=False):

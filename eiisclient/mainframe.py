@@ -156,15 +156,18 @@ class fmMain ( wx.Frame ):
         self.wxMenuBar = wx.MenuBar( 0 )
         self.menuFile = wx.Menu()
         self.menuitemUpdate = wx.MenuItem( self.menuFile, wx.ID_ANY, u"Обновить список пакетов"+ u"\t" + u"F5", u"Обновить список пакетов подсистем", wx.ITEM_NORMAL )
+        self.menuitemUpdate.SetBitmap( wx.NullBitmap )
         self.menuFile.Append( self.menuitemUpdate )
 
         self.menuFile.AppendSeparator()
 
         self.m_menu2 = wx.Menu()
         self.menuitem_select_all = wx.MenuItem( self.m_menu2, wx.ID_ANY, u"Выбрать все пакеты", wx.EmptyString, wx.ITEM_NORMAL )
+        self.menuitem_select_all.SetBitmap( wx.NullBitmap )
         self.m_menu2.Append( self.menuitem_select_all )
 
         self.menuitem_unselect_all = wx.MenuItem( self.m_menu2, wx.ID_ANY, u"Снять все выделения", wx.EmptyString, wx.ITEM_NORMAL )
+        self.menuitem_unselect_all.SetBitmap( wx.NullBitmap )
         self.m_menu2.Append( self.menuitem_unselect_all )
 
         self.menuFile.AppendSubMenu( self.m_menu2, u"Выбор пакетов" )
@@ -172,15 +175,18 @@ class fmMain ( wx.Frame ):
         self.menuFile.AppendSeparator()
 
         self.menuitemExit = wx.MenuItem( self.menuFile, wx.ID_EXIT, u"Завершить"+ u"\t" + u"Ctrl+q", u"Завершить работу программы", wx.ITEM_NORMAL )
+        self.menuitemExit.SetBitmap( wx.NullBitmap )
         self.menuFile.Append( self.menuitemExit )
 
         self.wxMenuBar.Append( self.menuFile, u"Файл" )
 
         self.menuService = wx.Menu()
         self.menuCheckUpdate = wx.MenuItem( self.menuService, wx.ID_ANY, u"Проверить обновления"+ u"\t" + u"F2", u"Запустить процесс проверки наличия обновлений в репозитории", wx.ITEM_NORMAL )
+        self.menuCheckUpdate.SetBitmap( wx.NullBitmap )
         self.menuService.Append( self.menuCheckUpdate )
 
         self.menuUpdate = wx.MenuItem( self.menuService, wx.ID_ANY, u"Обновить"+ u"\t" + u"F3", u"Запустить процесс обновления", wx.ITEM_NORMAL )
+        self.menuUpdate.SetBitmap( wx.NullBitmap )
         self.menuService.Append( self.menuUpdate )
         self.menuUpdate.Enable( False )
 
@@ -188,6 +194,7 @@ class fmMain ( wx.Frame ):
 
         self.m_menu1 = wx.Menu()
         self.menuitemCleanBuffer = wx.MenuItem( self.m_menu1, wx.ID_ANY, u"Очистить буфер", u"Очистить буфер", wx.ITEM_NORMAL )
+        self.menuitemCleanBuffer.SetBitmap( wx.NullBitmap )
         self.m_menu1.Append( self.menuitemCleanBuffer )
 
         self.menuService.AppendSubMenu( self.m_menu1, u"Очистка" )
@@ -195,25 +202,30 @@ class fmMain ( wx.Frame ):
         self.menuService.AppendSeparator()
 
         self.menuitemLinksUpdate = wx.MenuItem( self.menuService, wx.ID_ANY, u"Обновить ярлыки", u"Обновить ярлыки подсистем на рабочем столе", wx.ITEM_NORMAL )
+        self.menuitemLinksUpdate.SetBitmap( wx.NullBitmap )
         self.menuService.Append( self.menuitemLinksUpdate )
 
         self.btFull = wx.MenuItem( self.menuService, wx.ID_ANY, u"Полная обработка", u"Включить режим полной обработки файлов пакетов", wx.ITEM_CHECK )
+        self.btFull.SetBitmap( wx.NullBitmap )
         self.menuService.Append( self.btFull )
 
         self.menuService.AppendSeparator()
 
         self.menuConfig = wx.MenuItem( self.menuService, wx.ID_ANY, u"Настройки", u"Настройки программы", wx.ITEM_NORMAL )
+        self.menuConfig.SetBitmap( wx.NullBitmap )
         self.menuService.Append( self.menuConfig )
 
         self.wxMenuBar.Append( self.menuService, u"Сервис" )
 
         self.menuHelp = wx.Menu()
         self.menuitemManual = wx.MenuItem( self.menuHelp, wx.ID_ANY, u"Руководство"+ u"\t" + u"F1", u"Открыть руководство по работе с программой", wx.ITEM_NORMAL )
+        self.menuitemManual.SetBitmap( wx.NullBitmap )
         self.menuHelp.Append( self.menuitemManual )
 
         self.menuHelp.AppendSeparator()
 
         self.menuitemHelp = wx.MenuItem( self.menuHelp, wx.ID_ANY, u"О программе", u"Информация о программе", wx.ITEM_NORMAL )
+        self.menuitemHelp.SetBitmap( wx.NullBitmap )
         self.menuHelp.Append( self.menuitemHelp )
 
         self.wxMenuBar.Append( self.menuHelp, u"Помощь" )
@@ -369,11 +381,19 @@ class fmConfig ( wx.Frame ):
 
         fgSizer1.Add( self.wxStaticText1, 0, wx.ALL, 5 )
 
-        self.wxRepoPath = wx.TextCtrl( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( 500,-1 ), 0 )
-        self.wxRepoPath.SetMaxLength( 256 )
-        self.wxRepoPath.SetToolTip( u"Путь к репозиторию " )
+        bSizer12 = wx.BoxSizer( wx.HORIZONTAL )
 
-        fgSizer1.Add( self.wxRepoPath, 0, wx.ALL|wx.EXPAND, 5 )
+        wxRepoPathChoices = []
+        self.wxRepoPath = wx.ComboBox( self.m_panel15, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, wxRepoPathChoices, 0 )
+        self.wxRepoPath.SetMinSize( wx.Size( 480,-1 ) )
+
+        bSizer12.Add( self.wxRepoPath, 0, wx.ALL, 5 )
+
+        self.btRepoPathCh = wx.Button( self.m_panel15, wx.ID_ANY, u"...", wx.DefaultPosition, wx.DefaultSize, 0 )
+        bSizer12.Add( self.btRepoPathCh, 0, wx.ALL, 5 )
+
+
+        fgSizer1.Add( bSizer12, 1, wx.EXPAND, 5 )
 
         self.m_staticText3 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"Количество потоков загрузки:", wx.DefaultPosition, wx.DefaultSize, 0 )
         self.m_staticText3.Wrap( -1 )
@@ -444,6 +464,7 @@ class fmConfig ( wx.Frame ):
 
         # Connect Events
         self.wxInstallToUserProfile.Bind( wx.EVT_CHECKBOX, self.on_eiis_path_click )
+        self.btRepoPathCh.Bind( wx.EVT_BUTTON, self.on_edit_repo_path )
         self.sdApply.Bind( wx.EVT_BUTTON, self.Apply )
         self.sdCancel.Bind( wx.EVT_BUTTON, self.Cancel )
 
@@ -455,10 +476,114 @@ class fmConfig ( wx.Frame ):
     def on_eiis_path_click( self, event ):
         pass
 
+    def on_edit_repo_path( self, event ):
+        pass
+
     def Apply( self, event ):
         pass
 
     def Cancel( self, event ):
+        pass
+
+
+###########################################################################
+## Class fmRepoPath
+###########################################################################
+
+class fmRepoPath ( wx.Frame ):
+
+    def __init__( self, parent ):
+        wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = wx.EmptyString, pos = wx.DefaultPosition, size = wx.Size( 400,170 ), style = wx.CAPTION|wx.CLOSE_BOX|wx.FRAME_FLOAT_ON_PARENT|wx.TAB_TRAVERSAL )
+
+        self.SetSizeHints( wx.Size( 400,170 ), wx.Size( 400,170 ) )
+
+        bSizer13 = wx.BoxSizer( wx.VERTICAL )
+
+        self.lbRepoPathList = wx.ListCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LC_AUTOARRANGE|wx.LC_EDIT_LABELS|wx.LC_NO_HEADER|wx.LC_REPORT|wx.LC_SINGLE_SEL )
+        bSizer13.Add( self.lbRepoPathList, 1, wx.ALL|wx.EXPAND, 5 )
+
+        bSizer14 = wx.BoxSizer( wx.HORIZONTAL )
+
+        self.btRepoPathAdd = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self.btRepoPathAdd.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_PLUS, wx.ART_BUTTON ) )
+        self.btRepoPathAdd.SetToolTip( u"Добавить" )
+
+        bSizer14.Add( self.btRepoPathAdd, 0, wx.ALL, 5 )
+
+        self.btRepoPathEdit = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self.btRepoPathEdit.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_FIND_AND_REPLACE, wx.ART_BUTTON ) )
+        self.btRepoPathEdit.SetToolTip( u"Изменить" )
+
+        bSizer14.Add( self.btRepoPathEdit, 0, wx.ALL, 5 )
+
+        self.btRepoPathDelete = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self.btRepoPathDelete.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_MINUS, wx.ART_BUTTON ) )
+        self.btRepoPathDelete.SetToolTip( u"Удалить" )
+
+        bSizer14.Add( self.btRepoPathDelete, 0, wx.ALL, 5 )
+
+
+        bSizer14.Add( ( 0, 0), 1, wx.EXPAND, 5 )
+
+        self.btRepoPathReset = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self.btRepoPathReset.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_UNDO, wx.ART_BUTTON ) )
+        self.btRepoPathReset.SetToolTip( u"Сбросить" )
+
+        bSizer14.Add( self.btRepoPathReset, 0, wx.ALL, 5 )
+
+        self.btRepoPathApply = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self.btRepoPathApply.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_FILE_SAVE, wx.ART_BUTTON ) )
+        self.btRepoPathApply.SetToolTip( u"Применить" )
+
+        bSizer14.Add( self.btRepoPathApply, 0, wx.ALL, 5 )
+
+
+        bSizer13.Add( bSizer14, 0, wx.EXPAND, 5 )
+
+
+        self.SetSizer( bSizer13 )
+        self.Layout()
+
+        self.Centre( wx.BOTH )
+
+        # Connect Events
+        self.Bind( wx.EVT_CLOSE, self.Exit )
+        self.lbRepoPathList.Bind( wx.EVT_LIST_ITEM_ACTIVATED, self.lbRepoPathListOnListItemActivated )
+        self.btRepoPathAdd.Bind( wx.EVT_BUTTON, self.on_add )
+        self.btRepoPathEdit.Bind( wx.EVT_BUTTON, self.on_edit )
+        self.btRepoPathDelete.Bind( wx.EVT_BUTTON, self.on_delete )
+        self.btRepoPathReset.Bind( wx.EVT_BUTTON, self.on_reset )
+        self.btRepoPathApply.Bind( wx.EVT_BUTTON, self.Apply )
+
+    def __del__( self ):
+        pass
+
+
+    # Virtual event handlers, overide them in your derived class
+    def Exit( self, event ):
+        pass
+
+    def lbRepoPathListOnListItemActivated( self, event ):
+        pass
+
+    def on_add( self, event ):
+        pass
+
+    def on_edit( self, event ):
+        pass
+
+    def on_delete( self, event ):
+        pass
+
+    def on_reset( self, event ):
+        pass
+
+    def Apply( self, event ):
         pass
 
 

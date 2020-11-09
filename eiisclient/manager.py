@@ -39,6 +39,7 @@ def get_stdout_logger() -> logging.Logger:
 def get_config() -> ConfigDict:
     return ConfigDict(
         repopath='',
+        repopathlist=[],
         threads=THREADS,
         encode=DEFAULT_ENCODING,
         ftpencode=DEFAULT_FTP_ENCODING,
