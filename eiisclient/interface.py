@@ -423,7 +423,7 @@ class EditRepoPath(fmRepoPath):
 
     def _build_path_list(self):
         self.lbRepoPathList.DeleteAllItems()
-        for path in self.config.repopathlist:
+        for path in self.parent.wxRepoPath.GetItems():
             self.lbRepoPathList.Append((path,))
 
     def on_add( self, event ):
