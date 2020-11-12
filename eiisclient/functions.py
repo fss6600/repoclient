@@ -79,6 +79,9 @@ def read_file(file_path: str, encoding=DEFAULT_ENCODING):
     try:
         with open(file_path, encoding=encoding) as fp:
             return fp.read()
+    except UnicodeDecodeError:
+        with open(file_path, encoding='CP1251') as fp:
+            return fp.read()
     except FileNotFoundError:
         return None
 
@@ -125,11 +128,10 @@ def copytree(src: str, dst: str):
                 shutil.copyfile(s, d)
             except PermissionError:
                 try:
-                    onerror(os.remove, dst, None)
-                    shutil.copyfile(src, dst)
+                    onerror(os.remove, d, None)
+                    shutil.copyfile(s, d)
                 except Exception:
                     raise
-                shutil.copyfile(s, d)
             except Exception:
                 raise
 
