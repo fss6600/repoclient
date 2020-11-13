@@ -1,3 +1,4 @@
+
 # -*- coding: windows-1251 -*-
 ; example2.nsi
 ;
@@ -27,7 +28,7 @@
 
 ; The file to write
 OutFile "dist\clientup-${VERSION}-x86.exe"
-;Icon "eiisclient\gui\ico\update-96.ico"
+Icon "gui\img\update-96.ico"
 
 ; Request application privileges for Windows Vista and higher
 RequestExecutionLevel user
@@ -36,27 +37,22 @@ RequestExecutionLevel user
 ;Interface Settings
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "gui\img\update-96.ico"
 Unicode True
 BrandingText "Филиал №2 ГУ СРО ФСС РФ | 2020"
 ShowInstDetails show
 
 ; The default installation directory
-;InstallDir "$LOCALAPPDATA\Клиент обновления ЕИИС Соцстрах"
 InstallDir "$LOCALAPPDATA\Клиент обновления ЕИИС Соцстрах"
+;InstallDir "$PROGRAMFILES\Клиент обновления ЕИИС Соцстрах"
 
 ; Registry key to check for directory (so if you install again, it will
 ; overwrite the old one automatically)
 ;InstallDirRegKey HKLM "Software\NSIS_Example2" "Install_Dir"
 
-
-
 ;--------------------------------
 ; Pages
     !define MUI_TEXT_WELCOME_INFO_TITLE "$(^Name)"
     !define MUI_TEXT_WELCOME_INFO_TEXT "Программа установит '$(^Name)' - ${VERSION}"
-    ;!define MUI_COMPONENTSPAGE_NODESC
-    !define MUI_COMPONENTSPAGE_SMALLDESC
 
     !insertmacro MUI_PAGE_WELCOME
     !insertmacro MUI_PAGE_LICENSE "license.txt"
@@ -78,43 +74,55 @@ InstallDir "$LOCALAPPDATA\Клиент обновления ЕИИС Соцст�
 ;LicenseData "license.txt"
 
 ; The stuff to install
+var WorkDir
+Section ""
+    SectionIn RO
+    StrCpy $WorkDir "$APPDATA\Обновление ЕИИС Соцстрах"
+    SetOutPath $WorkDir
+    Delete "$WorkDir\config.json"
+    Delete "$WorkDir\index.json"
+    Delete "$WorkDir\index.json.sha1"
+
+    ;DetailPrint "$APPDATA\Обновление ЕИИС Соцстрах"
+    ;SetOutPath "$APPDATA\Обновление ЕИИС Соцстрах"
+    ;Delete "$APPDATA\Обновление ЕИИС Соцстрах\config.json"
+    ;Delete "$APPDATA\Обновление ЕИИС Соцстрах\index.json"
+    ;Delete "$APPDATA\Обновление ЕИИС Соцстрах\index.json.sha1"
+    File user\config.json
+SectionEnd
+
 Section "Основные файлы программы"
-  ;!define MUI_INNERTEXT_COMPONENTS_DESCRIPTION_INFO "Установка файлов программы"
   SectionIn RO
   ; Set output path to the installation directory.
   SetOutPath $INSTDIR
   RMDir /r $INSTDIR
   CreateDirectory $INSTDIR
   ; Put file there
-  File /r dist\W7\eiisclient\docs
-  File /r dist\W7\eiisclient\Include
-  File /r dist\W7\eiisclient\lib2to3
-  File /r dist\W7\eiisclient\win32com
-  File /r dist\W7\eiisclient\wx
-  File dist\W7\eiisclient\*.*
+  File /r dist\eiisclient\docs
+  File /r dist\eiisclient\Include
+  File /r dist\eiisclient\win32com
+  File /r dist\eiisclient\wx
+  File dist\eiisclient\*.*
 
   ;Store installation folder
 ;  WriteRegStr HKCU "Software\Обновление ЕИИС. Клиент" "" $INSTDIR
 
   ;Create uninstaller
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-
-
 SectionEnd
 
 ; Optional section (can be disabled by the user)
 SectionGroup /e "Создать ярлыки"
-Section "на рабочем столе" "Создать ярлыки программы на рабочем столе и в меню приложений"
-  ;!undef MUI_INNERTEXT_COMPONENTS_DESCRIPTION_INFO
-  ;!define MUI_INNERTEXT_COMPONENTS_DESCRIPTION_INFO "установка ярлыка на рабочий стол"
+Section "на рабочем столе"
   CreateShortcut "$DESKTOP\Обновление ЕИИС.lnk" "$INSTDIR\eiisclient.exe"
 SectionEnd
+
 Section "в меню приложений"
-  ;!undef MUI_INNERTEXT_COMPONENTS_DESCRIPTION_INFO
-  ;!define MUI_INNERTEXT_COMPONENTS_DESCRIPTION_INFO "установка ярлыков запуска и удаления программы в меню программ"
-  CreateDirectory "$SMPROGRAMS\Обновление ЕИИС"
+  CreateDirectory "$SMPROGRAMS\Обновление ЕИИС\Удаление"
+  ;CreateDirectory "$SMPROGRAMS\Обновление ЕИИС"
   CreateShortcut "$SMPROGRAMS\Обновление ЕИИС\Обновление ЕИИС. Клиент.lnk" "$INSTDIR\eiisclient.exe"
-  CreateShortcut "$SMPROGRAMS\Обновление ЕИИС\Удаление программы.lnk" "$INSTDIR\Uninstall.exe"
+  CreateShortcut "$SMPROGRAMS\Обновление ЕИИС\Руководство.lnk" "$INSTDIR\docs\index.html"
+  CreateShortcut "$SMPROGRAMS\Обновление ЕИИС\Удаление\Удаление программы.lnk" "$INSTDIR\Uninstall.exe"
 SectionEnd
 SectionGroupEnd
 
@@ -127,9 +135,9 @@ Section "Uninstall"
   Delete "$DESKTOP\Обновление ЕИИС.lnk"
 SectionEnd
 
-Function .onInit
-    ${IfNot} ${AtLeastWin7}
-        MessageBox MB_OK "Требуется Windows 7 и выше"
-        Quit
-    ${EndIf}
-FunctionEnd
+;Function .onInit
+;    ${IfNot} ${AtMostWin2003}
+;        MessageBox MB_OK "Эта программа для Windows XP. Установите соответсвующий вашей версии ОС дистрибутив"
+;        Quit
+;    ${EndIf}
+;FunctionEnd
