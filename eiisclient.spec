@@ -1,29 +1,39 @@
-# -*- mode: python -*-
+# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
+DEBUG = False
 
-
-a = Analysis(['eiisclient\\cli.py'],
-             pathex=['C:\\Users\\pmike\\workspace\\python\\eiisclient',
-                     'C:\\Users\\pmike\\workspace\\python\\eiisclient\\eiisclient'],
+a = Analysis(['eiisclient\\main.py'],
+             pathex=['C:\\Users\\mb.petrov.66\\workspace\\python\\eiisrepo\\client'],
              binaries=[],
-             datas=[(r'docs\build\html', 'docs'),],
+             datas=[(r'docs\build\html', 'docs'), ('license.txt', '.')],
              hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],
-             excludes=[],
+             excludes=['multiprocessing'],
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
-             cipher=block_cipher)
+             cipher=block_cipher,
+             noarchive=False)
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
 exe = EXE(pyz,
           a.scripts,
-          a.binaries,
-          a.zipfiles,
-          a.datas,
+          [],
+          exclude_binaries=True,
           name='eiisclient',
-          debug=False,
+          bootloader_ignore_signals=False,
           strip=False,
           upx=False,
-          console=False)
+          icon=r'gui\img\update-96.ico',
+
+          debug=DEBUG,
+          console=DEBUG )
+coll = COLLECT(exe,
+               a.binaries,
+               a.zipfiles,
+               a.datas,
+               strip=False,
+               upx=False,
+               upx_exclude=[],
+               name='eiisclient')

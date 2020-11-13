@@ -6,7 +6,7 @@
 
 import unittest
 
-from eiisclient import cli
+from eiisclient import main
 
 
 class TestEiisclient(unittest.TestCase):

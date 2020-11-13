@@ -1,5 +1,5 @@
 @echo off
-rem rm -v -r .\dist
-rem rm -v -r .\build
+rem rd /s /q "./dist"
+rem rd /s /q "./build"
 
-call python setup.py all
+call C:\Users\mb.petrov.66\workspace\python\eiisrepo\client\.venv\py34\Scripts\python.exe setup.py %1
