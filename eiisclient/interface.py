@@ -155,7 +155,7 @@ class MainFrame(fmMain):
             self.logger.debug(url)
 
         try:
-            webbrowser.open(url.as_uri(), new=1, autoraise=True)
+            webbrowser.open_new_tab(url.as_uri())
             self.logger.info('Запущен интернет-браузер с документацией')
         except Exception as err:
             self.logger.error(err)
