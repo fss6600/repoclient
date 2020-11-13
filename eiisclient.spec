@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
-
+DEBUG = False
 
 a = Analysis(['eiisclient\\main.py'],
              pathex=['C:\\Users\\mb.petrov.66\\workspace\\python\\eiisrepo\\client'],
@@ -10,7 +10,7 @@ a = Analysis(['eiisclient\\main.py'],
              hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],
-             excludes=[],
+             excludes=['multiprocessing'],
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher,
@@ -22,12 +22,13 @@ exe = EXE(pyz,
           [],
           exclude_binaries=True,
           name='eiisclient',
-          debug=False,
           bootloader_ignore_signals=False,
           strip=False,
           upx=False,
           icon=r'gui\img\update-96.ico',
-          console=False )
+
+          debug=DEBUG,
+          console=DEBUG )
 coll = COLLECT(exe,
                a.binaries,
                a.zipfiles,

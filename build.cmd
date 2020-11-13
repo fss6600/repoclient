@@ -2,4 +2,4 @@
 rem rd /s /q "./dist"
 rem rd /s /q "./build"
 
-call C:\Users\mb.petrov.66\workspace\python\eiisrepo\client\.venv\py38\Scripts\python.exe setup.py %1
+call C:\Users\mb.petrov.66\workspace\python\eiisrepo\client\.venv\py34\Scripts\python.exe setup.py %1
