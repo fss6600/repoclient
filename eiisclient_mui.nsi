@@ -74,22 +74,16 @@ InstallDir "$LOCALAPPDATA\Клиент обновления ЕИИС Соцст�
 ;LicenseData "license.txt"
 
 ; The stuff to install
-var WorkDir
-Section ""
-    SectionIn RO
-    StrCpy $WorkDir "$APPDATA\Обновление ЕИИС Соцстрах"
-    SetOutPath $WorkDir
-    Delete "$WorkDir\config.json"
-    Delete "$WorkDir\index.json"
-    Delete "$WorkDir\index.json.sha1"
-
-    ;DetailPrint "$APPDATA\Обновление ЕИИС Соцстрах"
-    ;SetOutPath "$APPDATA\Обновление ЕИИС Соцстрах"
-    ;Delete "$APPDATA\Обновление ЕИИС Соцстрах\config.json"
-    ;Delete "$APPDATA\Обновление ЕИИС Соцстрах\index.json"
-    ;Delete "$APPDATA\Обновление ЕИИС Соцстрах\index.json.sha1"
-    File user\config.json
-SectionEnd
+;var WorkDir
+;Section ""
+;    SectionIn RO
+;    StrCpy $WorkDir "$APPDATA\Обновление ЕИИС Соцстрах"
+;    SetOutPath $WorkDir
+;    Delete "$WorkDir\config.json"
+;    Delete "$WorkDir\index.json"
+;    Delete "$WorkDir\index.json.sha1"
+;    File user\config.json
+;SectionEnd
 
 Section "Основные файлы программы"
   SectionIn RO
